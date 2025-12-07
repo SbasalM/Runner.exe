@@ -42,7 +42,7 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir }) => {
   }, [lightDir, uniforms]);
 
   return (
-    <group dispose={null} scale={1.8}>
+    <group dispose={null} scale={2.0}>
       {meshes.map((mesh, i) => (
          <mesh 
             key={i} 
@@ -70,8 +70,8 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir }) => {
                    float NdotL = dot(normalize(vNormalWorld), normalize(uLightDir));
                    
                    // Step function for hard binary shadow (Sin City look)
-                   // 0.5 threshold creates the stylized look
-                   float lightIntensity = step(0.5, NdotL);
+                   // 0.0 threshold allows surfaces facing the light (90 deg) to be white
+                   float lightIntensity = step(0.0, NdotL);
                    
                    // Output Black or White
                    csm_DiffuseColor = vec4(vec3(lightIntensity), 1.0);
@@ -84,3 +84,5 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir }) => {
     </group>
   );
 };
+
+useGLTF.preload(MODEL_URL);
