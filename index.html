@@ -16,7 +16,11 @@
       h1, h2, h3, .brand-font {
         font-family: 'Orbitron', sans-serif;
       }
-
+      /* Safe Area Utility for iOS Home Bar */
+      .pb-safe {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      
       /* Custom Range Slider Styling for Cyberpunk feel */
       input[type=range] {
         -webkit-appearance: none;
