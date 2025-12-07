@@ -1,0 +1,5 @@
+{
+  "name": "Heart-Sync Music Runner",
+  "description": "An adaptive music player that adjusts playback speed and audio clarity based on a simulated heart rate monitor, designed for cyberpunk fitness motivation.",
+  "requestFramePermissions": []
+}

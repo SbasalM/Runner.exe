@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Heart-Sync Music Runner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap');
+      
+      body {
+        font-family: 'Share Tech Mono', monospace;
+        overscroll-behavior: none; /* Prevent elastic scrolling */
+      }
+      
+      h1, h2, h3, .brand-font {
+        font-family: 'Orbitron', sans-serif;
+      }
+
+      /* Custom Range Slider Styling for Cyberpunk feel */
+      input[type=range] {
+        -webkit-appearance: none;
+        background: transparent;
+      }
+      
+      input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        height: 28px;
+        width: 28px;
+        border-radius: 50%;
+        background: #ffffff;
+        cursor: grab;
+        margin-top: -10px;
+        box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        border: 2px solid rgba(0,0,0,0.5);
+      }
+      
+      input[type=range]:active::-webkit-slider-thumb {
+        cursor: grabbing;
+        transform: scale(1.1);
+      }
+
+      input[type=range]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 8px;
+        cursor: pointer;
+        background: transparent;
+        border-radius: 99px;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+    "react/jsx-dev-runtime": "https://esm.sh/react@18.2.0/jsx-dev-runtime",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "three": "https://esm.sh/three@0.160.0",
+    "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.16.8?external=react,react-dom,three",
+    "@react-three/drei": "https://esm.sh/@react-three/drei@9.107.2?external=react,react-dom,three,@react-three/fiber",
+    "three-custom-shader-material": "https://esm.sh/three-custom-shader-material@6.0.0?external=react,react-dom,three,@react-three/fiber",
+    "uuid": "https://esm.sh/uuid@9.0.1",
+    "maath": "https://esm.sh/maath@0.10.7",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/"
+  }
+}
+</script>
+</head>
+  <body class="bg-zinc-900 text-white overflow-hidden selection:bg-cyan-500 selection:text-black">
+    <div id="root"></div>
+  </body>
+</html>
