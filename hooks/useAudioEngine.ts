@@ -1,8 +1,9 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MODE_CONFIG } from '../constants';
 import { AppMode } from '../types';
 
-export const useAudioEngine = (mode: AppMode) => {
+export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -17,6 +18,12 @@ export const useAudioEngine = (mode: AppMode) => {
   
   // Ref for animation frame to handle playback rate interpolation
   const rafRef = useRef<number | null>(null);
+
+  // Ref for onEnded callback to avoid stale closures/cycles
+  const onEndedRef = useRef(onEnded);
+  useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
 
   // Initialize Audio Context
   const initAudio = useCallback(() => {
@@ -56,7 +63,12 @@ export const useAudioEngine = (mode: AppMode) => {
     // Event Listeners
     audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime));
     audio.addEventListener('loadedmetadata', () => setDuration(audio.duration));
-    audio.addEventListener('ended', () => setIsPlaying(false));
+    audio.addEventListener('ended', () => {
+        setIsPlaying(false);
+        if (onEndedRef.current) {
+            onEndedRef.current();
+        }
+    });
     
     // Initialize rate based on mode immediately
     audio.playbackRate = config.playbackRate;
@@ -66,10 +78,12 @@ export const useAudioEngine = (mode: AppMode) => {
   }, [mode]);
 
   // Load Track
-  const loadTrack = useCallback((url: string) => {
+  const loadTrack = useCallback((url: string, forcePlay = false) => {
     if (!audioElementRef.current) initAudio();
     if (audioElementRef.current) {
       const wasPlaying = !audioElementRef.current.paused;
+      const shouldPlay = forcePlay || wasPlaying;
+
       audioElementRef.current.src = url;
       audioElementRef.current.load();
       
@@ -79,8 +93,11 @@ export const useAudioEngine = (mode: AppMode) => {
       audioElementRef.current.playbackRate = config.playbackRate;
       setRealtimeRate(config.playbackRate);
 
-      if (wasPlaying) {
+      if (shouldPlay) {
         audioElementRef.current.play().catch(e => console.error("Play failed", e));
+        setIsPlaying(true);
+      } else {
+        setIsPlaying(false);
       }
     }
   }, [initAudio, mode]);

@@ -6,6 +6,9 @@ export const BPM_MAX = 180;
 export const BPM_TARGET_LOW = 130;
 export const BPM_TARGET_HIGH = 150;
 
+// Reliable public CDN URL for the custom Skull model
+// Switched to raw.githubusercontent.com for direct access to fix fetch errors
+export const SKULL_MODEL_URL = "https://raw.githubusercontent.com/SbasalM/heart-sync-assets/main/GEMINI%20HACKATHON_v2.glb";
 export const DEMO_TRACK_URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"; 
 
 export const DEMO_TRACKS = {
@@ -54,6 +57,14 @@ export const DEMO_TRACKS = {
     textColor: "text-[#00A8E1]"
   }
 };
+
+// Global Playlist ordered by Source ID (Spotify -> Apple -> YouTube -> Amazon)
+export const DEMO_PLAYLIST = [
+  DEMO_TRACKS.SPOTIFY,
+  DEMO_TRACKS.APPLE,
+  DEMO_TRACKS.YOUTUBE,
+  DEMO_TRACKS.AMAZON
+];
 
 export const MODE_CONFIG = {
   [AppMode.MOTIVATION]: {

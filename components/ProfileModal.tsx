@@ -12,7 +12,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, lif
   if (!isOpen) return null;
 
   const items = [
-    { id: 'cyber_visor', name: 'Cyber Visor', req: '0.5 Miles' },
+    { id: 'jaw', name: 'Cyber Jaw', req: '0.5 Miles' },
     { id: 'neural_halo', name: 'Neural Halo', req: '1.0 Miles' }
   ];
 

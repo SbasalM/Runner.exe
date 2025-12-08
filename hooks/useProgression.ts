@@ -42,10 +42,10 @@ export const useProgression = (currentSessionDistanceKm: number) => {
     let unlockedName = '';
 
     // Unlock Logic
-    // Level 1: Cyber Visor at 0.5 Miles
-    if (totalMiles >= 0.5 && !newItems.has('cyber_visor')) {
-        newItems.add('cyber_visor');
-        unlockedName = 'CYBER VISOR';
+    // Level 1: Cyber Jaw at 0.5 Miles
+    if (totalMiles >= 0.5 && !newItems.has('jaw')) {
+        newItems.add('jaw');
+        unlockedName = 'CYBER JAW';
         unlocked = true;
     }
 

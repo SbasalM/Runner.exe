@@ -12,27 +12,20 @@ interface MarqueeStatusProps {
 
 export const MarqueeStatus: React.FC<MarqueeStatusProps> = ({ label, mode, isIgnited, isPlaying, isStandby }) => {
   // Determine spacing/gap based on mode to reveal more/less of the avatar
-  // Updated spacing and duration for larger text and slower scroll
-  let gapClass = "mr-24"; // Motivation: Standard reading loop
-  // Slowed down by ~25% (20s -> 25s)
+  let gapClass = "mr-24"; 
   let duration = "25s";
 
   if (mode === AppMode.ZONE || mode === AppMode.COOLDOWN) {
-      gapClass = "mr-96"; // Zone/Cooldown: Wide gap to show off the avatar
-      // Slowed down (15s -> 20s)
+      gapClass = "mr-96"; 
       duration = "20s"; 
   } 
   if (mode === AppMode.OVERDRIVE) {
-      gapClass = "mr-[80vw]"; // Overdrive: Huge gap, mostly just avatar
-      // Slowed down (10s -> 12s)
+      gapClass = "mr-[80vw]"; 
       duration = "12s"; 
   }
 
-  // If ignited (Manifest sequence), the parent container handles opacity fade out.
-  // We strictly handle layout here.
-
   return (
-    <div className="w-full overflow-hidden whitespace-nowrap mask-linear-fade relative z-10 py-4">
+    <div className="w-full overflow-hidden whitespace-nowrap mask-linear-fade relative z-10 py-2">
       <div 
         className="inline-block animate-marquee will-change-transform"
         style={{ 
@@ -42,7 +35,7 @@ export const MarqueeStatus: React.FC<MarqueeStatusProps> = ({ label, mode, isIgn
       >
         {/* Repeat text multiple times to ensure seamless infinite scroll */}
         {[...Array(6)].map((_, i) => (
-          <span key={i} className={`inline-block font-black brand-font text-4xl tracking-widest ${gapClass}`}>
+          <span key={i} className={`inline-block font-black brand-font text-4xl tracking-widest drop-shadow-md ${gapClass}`}>
             {label}
           </span>
         ))}
@@ -56,8 +49,8 @@ export const MarqueeStatus: React.FC<MarqueeStatusProps> = ({ label, mode, isIgn
           animation: marquee linear infinite;
         }
         .mask-linear-fade {
-            mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
-            -webkit-mask-image: linear-gradient(to right, transparent, black 15%, black 85%, transparent);
+            mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
+            -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
         }
       `}</style>
     </div>

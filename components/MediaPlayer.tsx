@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { SongMetadata } from '../types';
 import { DEMO_TRACKS } from '../constants';
@@ -164,7 +163,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-2">
+      <div className="flex items-center justify-between gap-4 px-4 pb-[calc(3.5rem+env(safe-area-inset-bottom))] pt-2">
         {/* Track Info */}
         <div className="flex-1 overflow-hidden">
           {currentTrack ? (

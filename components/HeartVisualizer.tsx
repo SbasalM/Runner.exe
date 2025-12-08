@@ -4,6 +4,7 @@ import { AppMode } from '../types';
 import { MODE_CONFIG } from '../constants';
 import { AvatarScene } from './AvatarScene';
 import { MarqueeStatus } from './MarqueeStatus';
+import { GhostBPM } from './GhostBPM';
 
 interface HeartVisualizerProps {
   bpm: number;
@@ -14,9 +15,14 @@ interface HeartVisualizerProps {
   onClick: () => void;
   unlockedItems: string[];
   isStandby?: boolean;
+  avatarUrl: string;
+  targetMin: number;
+  targetMax: number;
 }
 
-export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, label, showBpm, isPlaying, onClick, unlockedItems, isStandby = false }) => {
+type TransitionStage = 'IDLE' | 'AVATAR_SPOTLIGHT' | 'BPM_SPOTLIGHT';
+
+export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, label, showBpm, isPlaying, onClick, unlockedItems, isStandby = false, avatarUrl, targetMin, targetMax }) => {
   const config = MODE_CONFIG[mode];
   const beatDuration = useMemo(() => 60 / bpm, [bpm]);
 
@@ -24,7 +30,6 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
   const isMotivation = mode === AppMode.MOTIVATION;
 
   // Visual State Logic based on isPlaying AND Mode
-  // If in Standby, keep opacity low like Motivation mode
   const glowOpacity = isPlaying ? (isMotivation ? 'opacity-10' : 'opacity-30') : 'opacity-0';
   const ringOpacity = isPlaying 
     ? (isMotivation ? 'opacity-10' : 'opacity-40') 
@@ -32,41 +37,49 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
 
   const coreShadow = isPlaying && !isMotivation ? '0 0 30px currentColor' : 'none';
 
-  // --- Manifestation Sequence Logic ---
-  const [manifestState, setManifestState] = useState<'IDLE' | 'IGNITE' | 'FADE_IN'>('IDLE');
+  // --- Cinematic Transition Sequencer ---
+  const [transitionStage, setTransitionStage] = useState<TransitionStage>('IDLE');
   const prevModeRef = useRef<AppMode>(mode);
 
   useEffect(() => {
+    // Trigger sequence only on Mode Change AND when playing
     if (mode !== prevModeRef.current && isPlaying) {
-        // 1. Ignite
-        setManifestState('IGNITE');
+        prevModeRef.current = mode; // Commit the change
         
-        // 2. Wait 1.5s then Fade In Text
+        // Step 1: Spotlight Avatar (Focus on visual change)
+        setTransitionStage('AVATAR_SPOTLIGHT');
+
+        // Step 2: Spotlight BPM (Focus on data change)
         const timer1 = setTimeout(() => {
-            setManifestState('FADE_IN');
-        }, 1500);
+            setTransitionStage('BPM_SPOTLIGHT');
+        }, 2000); // 2s Avatar focus
 
-        // 3. Wait 0.5s then IDLE
+        // Step 3: Return to Idle (Resting state)
+        // Increased duration: 2000ms (Avatar) + 3000ms (BPM) = 5000ms Total
         const timer2 = setTimeout(() => {
-            setManifestState('IDLE');
-        }, 2000); 
+            setTransitionStage('IDLE');
+        }, 5000); 
 
-        prevModeRef.current = mode;
         return () => {
             clearTimeout(timer1);
             clearTimeout(timer2);
         };
+    } else if (!isPlaying) {
+        // If stopped, sync immediately to prevent stale state
+        prevModeRef.current = mode;
+        setTransitionStage('IDLE');
     }
   }, [mode, isPlaying]);
 
-  const isIgnited = manifestState === 'IGNITE';
-  const textOpacity = isIgnited ? 'opacity-0' : 'opacity-100';
+  // Derived states for the visuals based on Stage
+  const isAvatarSpotlight = transitionStage === 'AVATAR_SPOTLIGHT';
+  const isBpmSpotlight = transitionStage === 'BPM_SPOTLIGHT';
+  const isOverlayActive = transitionStage !== 'IDLE';
 
   // --- Smooth Pulse Animation Logic ---
   const pulseRef = useRef<HTMLDivElement>(null);
   const bpmRef = useRef(bpm);
 
-  // Keep ref synced with latest BPM without re-triggering the animation loop effect
   useEffect(() => {
     bpmRef.current = bpm;
   }, [bpm]);
@@ -75,47 +88,38 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
     const element = pulseRef.current;
     if (!element) return;
 
-    // Reset if ignited (Manifesting)
-    if (isIgnited) {
-        element.style.transform = 'scale(1)';
+    // Reset scale if in Spotlight mode to prevent weird clipping during zoom
+    if (isAvatarSpotlight) {
+        element.style.transform = 'scale(1.1)'; // Slight boost
         element.style.opacity = '1';
         return;
     }
 
-    // Freeze if paused (Do NOT reset scale/opacity, just stop loop)
-    // UNLESS we are in Standby, where we want a gentle breathe
     if (!isPlaying && !isStandby) {
         return;
     }
 
     let animationFrameId: number;
     let lastTime = performance.now();
-    let phase = 0; // Accumulated phase (0 to 1)
+    let phase = 0; 
 
     const animate = (time: number) => {
-        const dt = (time - lastTime) / 1000; // Delta time in seconds
+        const dt = (time - lastTime) / 1000;
         lastTime = time;
 
         let frequency;
-        
         if (isStandby) {
-            frequency = 0.2; // 0.2 Hz = 12 BPM (Gentle breathing)
+            frequency = 0.2; 
         } else {
-            // Calculate frequency (Hz) = Beats Per Minute / 60
             frequency = bpmRef.current / 60;
         }
         
-        // Accumulate phase
         phase += dt * frequency;
-        phase = phase % 1; // Wrap around
+        phase = phase % 1; 
 
-        // Calculate Pulse Wave (Cosine for smooth breathing)
-        // Cosine goes 1 -> -1 -> 1. We map it to Scale 1.0 -> 0.95 -> 1.0
-        // Formula: 0.975 + 0.025 * cos(2PI * phase)
         const wave = Math.cos(phase * Math.PI * 2);
-        
         const scale = 0.975 + 0.025 * wave;
-        const opacity = 0.95 + 0.05 * wave; // Opacity 0.9 to 1.0
+        const opacity = 0.95 + 0.05 * wave;
 
         if (pulseRef.current) {
             pulseRef.current.style.transform = `scale(${scale})`;
@@ -128,12 +132,17 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
     animationFrameId = requestAnimationFrame(animate);
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, isIgnited, isStandby]); // Restart loop if Play state changes
+  }, [isPlaying, isStandby, isAvatarSpotlight]); 
 
   return (
-    <div 
-      className="relative flex items-center justify-center w-64 h-64 my-4 cursor-default group overflow-visible"
-    >
+    <div className="relative flex items-center justify-center w-64 h-64 mt-4 mb-24 cursor-default group overflow-visible">
+      
+      {/* CINEMATIC OVERLAY */}
+      <div 
+        className={`fixed inset-0 bg-black/80 transition-opacity duration-700 pointer-events-none z-40`}
+        style={{ opacity: isOverlayActive ? 1 : 0 }}
+      ></div>
+
       {/* Outer Glow */}
       <div className={`absolute inset-0 rounded-full blur-3xl ${config.borderColor} bg-current transition-all duration-[3000ms] ${glowOpacity}`}></div>
       
@@ -146,6 +155,7 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
         className={`
             rounded-full transition-shadow duration-[3000ms] ease-out flex items-center justify-center relative ${config.shadowColor}
             ${!isPlaying && !isStandby ? 'glitch-pause' : ''} 
+            ${isOverlayActive ? 'z-50' : 'z-auto'}
         `}
         style={{
           width: '70%', 
@@ -155,44 +165,52 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
           boxShadow: coreShadow,
         }}
       >
-         {/* 3D AVATAR LAYER - MASKED */}
-         <div className="absolute inset-0 rounded-full overflow-hidden z-0">
+         {/* 3D AVATAR LAYER */}
+         <div 
+            className={`
+                absolute top-1/2 left-1/2 w-[400%] h-[400%] overflow-visible pointer-events-none transition-all duration-1000
+                ${isBpmSpotlight ? 'opacity-20 blur-sm' : 'opacity-100 blur-0'}
+            `}
+            style={{
+                transform: `translate(-50%, -50%) ${isAvatarSpotlight ? 'scale(1.1)' : 'scale(1.0)'}`
+            }}
+         >
             <AvatarScene 
                 color={config.hex} 
                 mode={mode}
                 bpm={bpm}
-                isIgnited={isIgnited} 
+                isIgnited={isOverlayActive}
                 unlockedItems={unlockedItems}
                 isPlaying={isPlaying}
                 isStandby={isStandby}
+                avatarUrl={avatarUrl}
+                targetMin={targetMin}
+                targetMax={targetMax}
             />
          </div>
 
          {/* TEXT LAYER - MARQUEE */}
-         {/* Container width restricted to circle width to mask the scrolling text properly */}
+         {/* Expanded to 120% width and centered to allow text to feather out wider. Lowered with pb-3 */}
          <div 
            className={`
-             absolute flex items-center justify-center z-10 w-full h-full rounded-full overflow-hidden
+             absolute flex items-end justify-center z-10 
+             w-[120%] h-full left-1/2 -translate-x-1/2 
+             pb-3 overflow-hidden
              transition-opacity duration-500
              ${config.color}
-             ${textOpacity}
+             ${isOverlayActive ? 'opacity-0' : 'opacity-100'}
            `}
            style={{
              textShadow: '0 0 15px currentColor',
            }}
          >
-           {showBpm ? (
-             // Large BPM Display for 7s Overlay
-             <div className="flex flex-col items-center animate-fade-in-up">
-                <span className="text-6xl font-black tracking-tighter brand-font leading-none">{bpm}</span>
-                <span className="text-xs font-bold tracking-[0.3em] mt-2 opacity-80">BPM</span>
-             </div>
-           ) : (
-             // New Marquee Scrolling Text
-             <MarqueeStatus label={label} mode={mode} isIgnited={isIgnited} isPlaying={isPlaying} isStandby={isStandby} />
-           )}
+             <MarqueeStatus label={label} mode={mode} isIgnited={isOverlayActive} isPlaying={isPlaying} isStandby={isStandby} />
          </div>
       </div>
+
+      {/* GHOST BPM DISPLAY */}
+      {/* Passing 'mode' directly now instead of ghostMode */}
+      <GhostBPM bpm={bpm} mode={mode} isSpotlight={isBpmSpotlight} />
 
       {/* Ping Ring */}
       <div 
@@ -206,11 +224,6 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
         @keyframes ping {
           75%, 100% { transform: scale(1.5); opacity: 0; }
         }
-        @keyframes fade-in-up {
-           from { opacity: 0; transform: translateY(10px); }
-           to { opacity: 1; transform: translateY(0); }
-        }
-        /* Secondary Glitch Effect on Pause */
         @keyframes glitch-skew {
             0% { transform: skew(0deg); opacity: 0.9; }
             20% { transform: skew(-2deg); opacity: 0.8; }

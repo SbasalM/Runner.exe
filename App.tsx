@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings } from './types';
-import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG } from './constants';
+import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG, SKULL_MODEL_URL, DEMO_PLAYLIST } from './constants';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useRunEngine } from './hooks/useRunEngine';
 import { useGymEngine } from './hooks/useGymEngine';
@@ -20,6 +20,9 @@ const App: React.FC = () => {
   const [currentTrack, setCurrentTrack] = useState<SongMetadata | null>(null);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  
+  // Custom Avatar State
+  const [avatarUrl, setAvatarUrl] = useState<string>(SKULL_MODEL_URL);
   
   // Settings & Modes
   const [workoutMode, setWorkoutMode] = useState<WorkoutMode>(WorkoutMode.RUN);
@@ -75,8 +78,20 @@ const App: React.FC = () => {
     }
   }, [currentMode]);
 
+  // --- PLAYLIST AUTO-SKIP LOGIC ---
+  // We use a ref to hold the skip function to break the cyclic dependency:
+  // useAudioEngine(onTrackEnd) -> onTrackEnd calls handleSkip -> handleSkip calls loadTrack -> loadTrack comes from useAudioEngine
+  const skipRef = useRef<((direction: 'next' | 'prev', forcePlay: boolean) => void) | null>(null);
+
+  const onTrackEnd = () => {
+    if (skipRef.current) {
+        // Auto-advance and FORCE PLAY
+        skipRef.current('next', true);
+    }
+  };
+
   // --- Engines ---
-  const { isPlaying, togglePlay, loadTrack } = useAudioEngine(currentMode);
+  const { isPlaying, togglePlay, loadTrack } = useAudioEngine(currentMode, onTrackEnd);
   
   // Pass isActive flag to ensure stats reset when switching modes
   const runStats = useRunEngine(bpm, isPlaying, settings.units, workoutMode === WorkoutMode.RUN);
@@ -130,10 +145,45 @@ const App: React.FC = () => {
     loadTrack(objectUrl);
   };
 
-  const handleTrackSelect = (track: SongMetadata) => {
-    setCurrentTrack(track);
-    loadTrack(track.source);
+  const handleAvatarSelect = (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+    setAvatarUrl(objectUrl);
+    triggerToast("Avatar System Updated");
   };
+
+  const handleTrackSelect = (track: SongMetadata, forcePlay = false) => {
+    setCurrentTrack(track);
+    loadTrack(track.source, forcePlay);
+  };
+
+  const handleSkip = (direction: 'next' | 'prev', forcePlay = false) => {
+    if (!currentTrack) return;
+    
+    // Check if we are playing a demo track to enable playlist features
+    const currentIndex = DEMO_PLAYLIST.findIndex(t => t.name === currentTrack.name);
+    
+    if (currentIndex !== -1) {
+        // Calculate new index
+        let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+        
+        // Loop playlist
+        if (newIndex >= DEMO_PLAYLIST.length) newIndex = 0;
+        if (newIndex < 0) newIndex = DEMO_PLAYLIST.length - 1;
+        
+        const nextTrack = DEMO_PLAYLIST[newIndex];
+        
+        // Use existing selection logic with optional forcePlay
+        handleTrackSelect(nextTrack, forcePlay);
+        triggerToast(direction === 'next' ? "Skipped Forward" : "Skipped Back");
+    } else {
+        triggerToast("Playlist unavailable for custom tracks");
+    }
+  };
+
+  // Keep ref updated
+  useEffect(() => {
+    skipRef.current = handleSkip;
+  }, [handleSkip]);
 
   return (
     <div className="h-[100dvh] w-full bg-[#050505] flex items-center justify-center p-0 md:p-8 font-mono overflow-hidden relative">
@@ -146,6 +196,7 @@ const App: React.FC = () => {
         setBpm={setBpm}
         modeConfig={modeConfig}
         onFileSelect={handleFileSelect}
+        onAvatarSelect={handleAvatarSelect}
         unlockedItems={unlockedItems}
         toggleUnlock={toggleUnlock}
       />
@@ -187,6 +238,9 @@ const App: React.FC = () => {
               onClick={() => {}} 
               unlockedItems={unlockedItems}
               isStandby={isStandby}
+              avatarUrl={avatarUrl}
+              targetMin={settings.targetMin}
+              targetMax={settings.targetMax}
             />
         </div>
 
@@ -279,8 +333,8 @@ const App: React.FC = () => {
              <MediaPlayer 
                isPlaying={isPlaying}
                onPlayPause={togglePlay}
-               onPrev={() => triggerToast("Previous Track")}
-               onNext={() => triggerToast("Next Track")}
+               onPrev={() => handleSkip('prev')}
+               onNext={() => handleSkip('next')}
                currentTrack={currentTrack}
                onTrackSelect={handleTrackSelect}
                enabledServices={settings.enabledServices}

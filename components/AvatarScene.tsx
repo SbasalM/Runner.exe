@@ -1,6 +1,7 @@
 
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, ReactNode, Component } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
+import { Sphere } from '@react-three/drei';
 import * as THREE from 'three';
 import { GraphicSkull } from './GraphicSkull';
 import { AppMode } from '../types';
@@ -13,9 +14,66 @@ interface AvatarSceneProps {
   unlockedItems: string[];
   isPlaying: boolean;
   isStandby?: boolean;
+  avatarUrl: string;
+  targetMin: number;
+  targetMax: number;
 }
 
-const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgnited: boolean; unlockedItems: string[]; isPlaying: boolean; isStandby: boolean }> = ({ color, mode, bpm, isIgnited, unlockedItems, isPlaying, isStandby }) => {
+interface ErrorBoundaryProps {
+  fallback: ReactNode;
+  children?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+// Error Boundary to catch 3D Loading Errors (e.g., fetch failed)
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  
+  componentDidCatch(error: any) {
+    console.error("Avatar 3D Load Failed:", error);
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
+// Fallback Mesh if model fails to load
+const FallbackAvatar: React.FC<{ color: string }> = ({ color }) => {
+  const meshRef = useRef<THREE.Mesh>(null);
+  useFrame((state) => {
+    if (meshRef.current) {
+      meshRef.current.rotation.y += 0.01;
+      meshRef.current.rotation.x = Math.sin(state.clock.elapsedTime) * 0.2;
+    }
+  });
+
+  return (
+    <Sphere ref={meshRef} args={[1, 16, 16]} scale={1.5}>
+      <meshStandardMaterial 
+        color={color} 
+        wireframe 
+        emissive={color} 
+        emissiveIntensity={2}
+      />
+    </Sphere>
+  );
+};
+
+const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgnited: boolean; unlockedItems: string[]; isPlaying: boolean; isStandby: boolean; avatarUrl: string; targetMin: number; targetMax: number }> = ({ color, mode, bpm, isIgnited, unlockedItems, isPlaying, isStandby, avatarUrl, targetMin, targetMax }) => {
   const groupRef = useRef<THREE.Group>(null);
   
   // Calculate Light Direction (Sun Position)
@@ -78,24 +136,36 @@ const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgni
   return (
     <>
       <group ref={groupRef}>
-         {/* Use new GraphicSkull with Sin City Shader */}
-         <GraphicSkull lightDir={lightDir} />
+         <ErrorBoundary fallback={<FallbackAvatar color={color} />}>
+            <GraphicSkull 
+              lightDir={lightDir} 
+              bpm={bpm} 
+              mode={mode}
+              avatarUrl={avatarUrl} 
+              isStandby={isStandby} 
+              unlockedItems={unlockedItems} 
+              targetMin={targetMin}
+              targetMax={targetMax}
+            />
+         </ErrorBoundary>
       </group>
       
       {/* Light source for shader logic */}
       <directionalLight position={lightPos} intensity={1} />
+      {/* Ambient for standard materials (Jaw/Halo) */}
+      <ambientLight intensity={0.5} />
     </>
   );
 };
 
-export const AvatarScene: React.FC<AvatarSceneProps> = ({ color, mode, bpm, isIgnited, unlockedItems, isPlaying, isStandby = false }) => {
+export const AvatarScene: React.FC<AvatarSceneProps> = ({ color, mode, bpm, isIgnited, unlockedItems, isPlaying, isStandby = false, avatarUrl, targetMin, targetMax }) => {
   return (
     <Canvas 
-        camera={{ position: [0, 0, 3.5], fov: 45 }} 
+        camera={{ position: [0, 0, 10], fov: 45 }} 
         gl={{ alpha: true, antialias: true }}
         className="w-full h-full pointer-events-none"
     >
-      <SceneContent color={color} mode={mode} bpm={bpm} isIgnited={isIgnited} unlockedItems={unlockedItems} isPlaying={isPlaying} isStandby={isStandby} />
+      <SceneContent color={color} mode={mode} bpm={bpm} isIgnited={isIgnited} unlockedItems={unlockedItems} isPlaying={isPlaying} isStandby={isStandby} avatarUrl={avatarUrl} targetMin={targetMin} targetMax={targetMax} />
     </Canvas>
   );
 };
