@@ -29,7 +29,10 @@ interface ErrorBoundaryState {
 
 // Error Boundary to catch 3D Loading Errors (e.g., fetch failed)
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false };
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
   static getDerivedStateFromError(_: any): ErrorBoundaryState {
     return { hasError: true };

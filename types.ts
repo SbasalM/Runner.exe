@@ -53,3 +53,13 @@ export interface SongMetadata {
   album?: string;
   source: string; // URL or Blob URL
 }
+
+export interface WorkoutSession {
+  id: string;
+  date: number; // Timestamp
+  mode: WorkoutMode;
+  duration: string;
+  distance?: string;
+  calories: number;
+  avgPace?: string;
+}

@@ -11,9 +11,7 @@ export const useGymEngine = (isPlaying: boolean, currentMode: AppMode, isActive:
     [AppMode.COOLDOWN]: 0
   });
 
-  useEffect(() => {
-    // Reset if mode is inactive
-    if (!isActive) {
+  const reset = () => {
       setElapsedTime(0);
       setZoneStats({
         [AppMode.MOTIVATION]: 0,
@@ -21,8 +19,11 @@ export const useGymEngine = (isPlaying: boolean, currentMode: AppMode, isActive:
         [AppMode.OVERDRIVE]: 0,
         [AppMode.COOLDOWN]: 0
       });
-      return;
-    }
+  };
+
+  useEffect(() => {
+    // Stop accumulating if inactive
+    if (!isActive) return;
 
     if (!isPlaying) return;
 
@@ -56,6 +57,7 @@ export const useGymEngine = (isPlaying: boolean, currentMode: AppMode, isActive:
 
   return {
     formattedTime: formatTime(elapsedTime),
-    percentages: getPercentages()
+    percentages: getPercentages(),
+    reset
   };
 };

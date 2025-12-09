@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource } from './types';
+import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource, WorkoutSession } from './types';
 import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG, SKULL_MODEL_URL, DEMO_PLAYLIST } from './constants';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useRunEngine } from './hooks/useRunEngine';
@@ -13,6 +14,7 @@ import { DebugPanel } from './components/DebugPanel';
 import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
 import { SplashScreen } from './components/SplashScreen';
+import { WorkoutSummary } from './components/WorkoutSummary';
 
 const App: React.FC = () => {
   // --- Global State ---
@@ -41,10 +43,17 @@ const App: React.FC = () => {
   });
 
   const [isCooldown, setIsCooldown] = useState(false);
+  // Cooldown Transition State: IDLE -> TEXT (Animation) -> BUTTONS (Interactive)
+  const [cooldownStage, setCooldownStage] = useState<'IDLE' | 'TEXT' | 'BUTTONS'>('IDLE');
 
   // --- Timer Mode State ---
   // We need a separate timer to track the session progress if InputSource is TIMER
   const [timerElapsed, setTimerElapsed] = useState(0); // seconds
+
+  // History & Summary State
+  const [workoutHistory, setWorkoutHistory] = useState<WorkoutSession[]>([]);
+  const [lastSession, setLastSession] = useState<WorkoutSession | null>(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   // UI State
   const [showDebugPanel, setShowDebugPanel] = useState(false);
@@ -69,6 +78,19 @@ const App: React.FC = () => {
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     };
   }, []);
+
+  // Cooldown Transition Sequencer
+  useEffect(() => {
+    if (isCooldown) {
+      setCooldownStage('TEXT');
+      const timer = setTimeout(() => {
+        setCooldownStage('BUTTONS');
+      }, 5000); // 5s duration to match visualizer BPM Spotlight return
+      return () => clearTimeout(timer);
+    } else {
+      setCooldownStage('IDLE');
+    }
+  }, [isCooldown]);
 
   // --- PLAYLIST AUTO-SKIP LOGIC ---
   const skipRef = useRef<((direction: 'next' | 'prev', forcePlay: boolean) => void) | null>(null);
@@ -137,10 +159,9 @@ const App: React.FC = () => {
   // Pass overdrive settings to audio engine
   const { isPlaying, togglePlay, loadTrack } = useAudioEngine(currentMode, onTrackEnd, settings.overdriveSpeedup);
   
-  // Pass isActive flag to ensure stats reset when switching modes
-  // If in Timer Mode, we fake the input BPM for the metrics too so the runner gets "credit" based on the mode intensity
-  const runStats = useRunEngine(effectiveBpm, isPlaying, settings.units, workoutMode === WorkoutMode.RUN, settings.useGPS);
-  const gymStats = useGymEngine(isPlaying, currentMode, workoutMode === WorkoutMode.GYM);
+  // Pass isActive flag to ensure stats pause during cooldown but don't auto-reset
+  const runStats = useRunEngine(effectiveBpm, isPlaying, settings.units, isPlaying && !isCooldown, settings.useGPS);
+  const gymStats = useGymEngine(isPlaying, currentMode, isPlaying && !isCooldown);
   
   // Progression System
   const { unlockedItems, newUnlock, lifetimeDistanceMiles, toggleUnlock } = useProgression(runStats.rawDistanceKm);
@@ -156,10 +177,6 @@ const App: React.FC = () => {
           }, 1000);
           return () => clearInterval(interval);
       }
-      
-      // If we stop playing or switch to cooldown?
-      // For now, let's keep the timer paused if paused.
-      // Reset logic could be added if needed (e.g. stop button double tap)
   }, [isPlaying, settings.inputSource, isCooldown]);
 
   // Force Idle (dim controls) when Play starts
@@ -255,6 +272,40 @@ const App: React.FC = () => {
   useEffect(() => {
     skipRef.current = handleSkip;
   }, [handleSkip]);
+
+  // --- Workout Finish Logic ---
+  const handleFinishWorkout = () => {
+    // 1. Capture Stats based on mode (Persisted during cooldown)
+    const sessionData: WorkoutSession = {
+        id: Date.now().toString(),
+        date: Date.now(),
+        mode: workoutMode,
+        calories: workoutMode === WorkoutMode.RUN ? runStats.calories : 0, // Simplified calories for now, could use gym calories later
+        duration: workoutMode === WorkoutMode.RUN ? '00:00' : gymStats.formattedTime
+    };
+
+    if (workoutMode === WorkoutMode.RUN) {
+        sessionData.distance = `${runStats.distance} ${runStats.distanceUnit}`;
+        sessionData.avgPace = runStats.pace;
+        sessionData.duration = "N/A"; 
+    }
+
+    // 2. Save to History
+    setWorkoutHistory(prev => [sessionData, ...prev]);
+    setLastSession(sessionData);
+
+    // 3. Reset Engine Stats explicitly
+    runStats.reset();
+    gymStats.reset();
+    setTimerElapsed(0);
+
+    // 4. Reset UI State
+    setIsCooldown(false);
+    if (isPlaying) togglePlay(); // Stop music
+
+    // 5. Show Summary
+    setShowSummaryModal(true);
+  };
 
   return (
     <div className="h-[100dvh] w-full bg-[#050505] flex items-center justify-center p-0 md:p-8 font-mono overflow-hidden relative">
@@ -397,21 +448,44 @@ const App: React.FC = () => {
         {/* --- FOOTER SECTION: Cooldown + Player --- */}
         <div className="relative z-20 flex-none w-full flex flex-col justify-end">
             
-            {/* COOLDOWN BUTTON - Lower Z-Index so Player Tray can slide over it */}
+            {/* CONTROL BUTTONS - Lower Z-Index so Player Tray can slide over it */}
             <div className={`relative z-10 px-6 pb-2 w-full transition-all duration-[3000ms] ${isIdle ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}>
-                <button
-                    onClick={() => setIsCooldown(!isCooldown)}
-                    className={`w-full py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 ${
-                        isCooldown 
-                        ? 'bg-cyan-500 text-black border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.6)] scale-[1.02]' 
-                        : 'bg-cyan-950/30 text-cyan-500 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:bg-cyan-500 hover:text-black hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-                    }`}
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    {isCooldown ? 'COOLING DOWN...' : 'ACTIVATE COOLDOWN'}
-                </button>
+                
+                {/* Dynamic Switch: Activate vs Resume/Stop */}
+                {!isCooldown ? (
+                    <button
+                        onClick={() => setIsCooldown(true)}
+                        className="w-full py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-cyan-950/30 text-cyan-500 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:bg-cyan-500 hover:text-black hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        ACTIVATE COOLDOWN
+                    </button>
+                ) : (
+                    <div 
+                        className={`flex gap-4 transition-all duration-500 ${cooldownStage === 'BUTTONS' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+                    >
+                        <button
+                            onClick={() => setIsCooldown(false)}
+                            className="flex-1 py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-green-900/40 text-green-400 border-green-500/50 hover:bg-green-500 hover:text-black"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                            </svg>
+                            RESUME
+                        </button>
+                        <button
+                            onClick={handleFinishWorkout}
+                            className="flex-1 py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-red-900/40 text-red-400 border-red-500/50 hover:bg-red-500 hover:text-black"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" clipRule="evenodd" />
+                            </svg>
+                            STOP
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Media Player - High Z-Index to allow Tray to overlap Cooldown */}
@@ -426,6 +500,37 @@ const App: React.FC = () => {
                     enabledServices={settings.enabledServices}
                 />
             </div>
+        </div>
+        
+        {/* FLOATING TEXT LAYER - MOVED TO ROOT FOR Z-INDEX */}
+        <div 
+            className={`
+                absolute bottom-[20%] left-0 w-full flex justify-center z-[60] pointer-events-none
+                transition-all duration-700 ease-out
+                ${cooldownStage === 'TEXT' 
+                    ? 'opacity-100 translate-y-0' 
+                    : cooldownStage === 'BUTTONS' 
+                        ? 'opacity-0 translate-y-[-20px]' 
+                        : 'opacity-0 translate-y-full' 
+                }
+            `}
+        >
+             <div className="flex items-center gap-3 bg-black/80 backdrop-blur-md px-6 py-2 rounded-full border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+                 {/* Backward spinning icon */}
+                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-cyan-400 animate-spin-reverse" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <span className="text-cyan-400 font-bold brand-font tracking-widest text-sm animate-pulse">COOLING DOWN...</span>
+             </div>
+             <style>{`
+                @keyframes spin-reverse {
+                    from { transform: rotate(360deg); }
+                    to { transform: rotate(0deg); }
+                }
+                .animate-spin-reverse {
+                    animation: spin-reverse 3s linear infinite;
+                }
+             `}</style>
         </div>
 
         {/* Overlays */}
@@ -443,6 +548,13 @@ const App: React.FC = () => {
             unlockedItems={unlockedItems}
             equippedItems={equippedItems}
             onToggleEquip={handleToggleEquip}
+            history={workoutHistory}
+        />
+
+        <WorkoutSummary 
+            isOpen={showSummaryModal}
+            onClose={() => setShowSummaryModal(false)}
+            session={lastSession}
         />
 
         {showToast && (

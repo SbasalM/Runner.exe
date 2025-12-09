@@ -10,15 +10,13 @@ export const useRunEngine = (bpm: number, isPlaying: boolean, units: UnitSystem,
   const lastUpdateRef = useRef<number>(Date.now());
   const prevPositionRef = useRef<{lat: number, lon: number} | null>(null);
 
-  // Reset stats when mode is inactive
-  useEffect(() => {
-    if (!isActive) {
-      setDistanceKm(0);
-      setCalories(0);
-      setCurrentPaceMinPerKm(0);
-      prevPositionRef.current = null;
-    }
-  }, [isActive]);
+  // Manual Reset Function
+  const reset = () => {
+    setDistanceKm(0);
+    setCalories(0);
+    setCurrentPaceMinPerKm(0);
+    prevPositionRef.current = null;
+  };
 
   // --- HELPER: Haversine Distance (in km) ---
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -34,6 +32,7 @@ export const useRunEngine = (bpm: number, isPlaying: boolean, units: UnitSystem,
   };
 
   useEffect(() => {
+    // Only accumulate if Active AND Playing
     if (!isActive) return;
 
     if (!isPlaying) {
@@ -175,5 +174,6 @@ export const useRunEngine = (bpm: number, isPlaying: boolean, units: UnitSystem,
     pace: display.pace,
     paceUnit: display.paceUnit,
     calories: Math.floor(calories),
+    reset
   };
 };

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { AppMode } from '../types';
 import { MODE_CONFIG } from '../constants';
@@ -55,7 +56,13 @@ export const GhostBPM: React.FC<GhostBPMProps> = ({ value, label, mode, isSpotli
             animate-glitch-in transition-colors duration-1000
             ${isSpotlight ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.8)]' : config.color}
           `}
-          style={{ textShadow: isSpotlight ? 'none' : '0 0 10px currentColor' }}
+          style={{ 
+            // Comic Book Outline Effect
+            WebkitTextStroke: '8px black', 
+            paintOrder: 'stroke fill',
+            // Apply glow outside the stroke if not in spotlight
+            textShadow: isSpotlight ? 'none' : '0 0 10px currentColor' 
+          }}
         >
           {displayValue}
         </div>
@@ -70,6 +77,10 @@ export const GhostBPM: React.FC<GhostBPMProps> = ({ value, label, mode, isSpotli
               animate-ghost-float-up
               ${config.color}
             `}
+            style={{ 
+                WebkitTextStroke: '8px black', 
+                paintOrder: 'stroke fill'
+            }}
           >
             {prevValue}
           </div>
