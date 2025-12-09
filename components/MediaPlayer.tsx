@@ -88,17 +88,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#111] border-t border-gray-800 p-0 flex flex-col transition-all duration-300">
+    <div className="relative w-full">
       
-      {/* Smart Stack Source Selector - Auto Collapse Logic */}
-      {/* Added Padding Wrapper to fix glow clipping */}
+      {/* TRAY: Absolute positioned 'Connector Bar' that sits ABOVE the player controls 
+          and slides down BEHIND them when playing. */}
       <div 
-        className="w-full overflow-hidden transition-all ease-in-out"
-        style={{
-            maxHeight: isPlaying ? '0px' : '100px', // Collapses to 0 when playing, expanded needs room for padding
-            opacity: isPlaying ? 0 : 1,
-            transitionDuration: '3000ms' // 3s Morph
-        }}
+        className={`
+            absolute bottom-[98%] left-0 w-full 
+            bg-[#111] border-t border-gray-800 
+            transition-all duration-1000 ease-in-out
+            overflow-hidden
+            z-10
+            ${isPlaying ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}
+        `}
       >
         <div className="p-6 pb-2 flex w-full gap-2">
             {visibleTracks.map((track) => {
@@ -106,12 +108,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             const isHidden = activeSourceId && !isActive; // Hide if another is active
 
             // Visual Logic
-            // 1. Shadow: Shift shadow UP (-6px Y) to prevent bottom clipping
-            // Only show Glow when Active AND Selecting (Not Playing)
             const showGlow = isActive && !isPlaying;
             const shadowClass = showGlow ? 'shadow-[0_-6px_20px_rgba(255,255,255,0.6)]' : 'shadow-none';
-
-            // 2. Layout: Collapsed items are width-0 and hidden
             const layoutClass = isHidden ? 'w-0 opacity-0 p-0 m-0 border-0' : 'flex-1 opacity-100';
 
             return (
@@ -125,17 +123,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                     ${shadowClass}
                 `}
                 style={{
-                    // CRITICAL FIX: Decouple Fast Layout from Slow Visuals
-                    // Layout (Width/Flex/Opacity-Visibility) -> 300ms Fast
-                    // Handoff (Shadow) -> 3000ms Slow
                     transitionProperty: 'flex-grow, width, margin, padding, opacity, background-color, box-shadow',
                     transitionDuration: '300ms, 300ms, 300ms, 300ms, 300ms, 300ms, 3000ms',
                     transitionTimingFunction: 'cubic-bezier(0.25, 1, 0.5, 1)'
                 }}
                 title={track.platform}
                 >
-                {/* Dimmer Overlay for Energy Handoff */}
-                {/* Simulates "Opacity 0.5" without affecting the parent layout container */}
                 <div 
                     className={`
                     absolute inset-0 bg-black pointer-events-none transition-opacity duration-[3000ms] ease-linear
@@ -143,12 +136,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                     `}
                 />
 
-                {/* Icon Container - Always centered */}
                 <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isActive ? 'opacity-0' : 'opacity-100'}`}>
                     <SourceIcon id={track.id} className="w-6 h-6 text-black" />
                 </div>
 
-                {/* Expanded Content - Centered */}
                 <div className={`relative z-10 flex items-center justify-center gap-2 transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-0'}`}>
                     <div className="w-5 h-5 text-black flex items-center justify-center">
                         <SourceIcon id={track.id} className="w-full h-full" />
@@ -163,14 +154,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 px-4 pb-[calc(3.5rem+env(safe-area-inset-bottom))] pt-2">
+      {/* CONTROLS: Fixed at bottom relative to this container, sits ON TOP of the tray via z-index */}
+      <div className="relative z-30 w-full bg-[#111] border-t border-gray-800 flex items-center justify-between gap-4 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2">
         {/* Track Info */}
         <div className="flex-1 overflow-hidden">
           {currentTrack ? (
             <div className="flex flex-col justify-center leading-tight">
               {/* Title Row */}
               <div className="flex items-center gap-2 mb-0.5">
-                 {/* Tiny Icon Logic when Collapsed/Playing */}
                  <div className={`text-cyan-400 transition-all duration-[3000ms] ${isPlaying ? 'w-4 h-4 opacity-100' : 'w-0 h-0 opacity-0 overflow-hidden'}`}>
                     {activeSourceId && <SourceIcon id={activeSourceId} className="w-full h-full" />}
                  </div>
@@ -178,7 +169,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                    {currentTrack.name}
                  </span>
               </div>
-              {/* 2-Line Mode: Combined Artist & Album */}
               <div className="text-zinc-400 text-xs truncate font-mono font-medium">
                 {currentTrack.artist || 'Unknown Artist'}
                 <span className="mx-1.5 opacity-50">•</span>
@@ -190,7 +180,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* Compact Controls - Vertical Padding Added */}
+        {/* Compact Controls */}
         <div className="flex items-center gap-3 py-1">
           <button onClick={onPrev} className="text-gray-500 hover:text-white p-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>

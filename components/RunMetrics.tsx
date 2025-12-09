@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface RunMetricsProps {
@@ -12,7 +11,7 @@ interface RunMetricsProps {
 
 export const RunMetrics: React.FC<RunMetricsProps> = ({ distance, distanceUnit, pace, paceUnit, calories, newUnlock }) => {
   return (
-    <div className="w-full flex-1 flex flex-col justify-center gap-4 px-2 relative">
+    <div className="w-full flex-1 flex flex-col justify-center gap-2 md:gap-4 px-2 relative min-h-0">
       
       {/* UNLOCK NOTIFICATION TOAST */}
       {newUnlock && (
@@ -27,30 +26,30 @@ export const RunMetrics: React.FC<RunMetricsProps> = ({ distance, distanceUnit, 
         </div>
       )}
 
-      {/* Primary Stat: Distance */}
-      <div className="flex items-end justify-between border-b border-gray-800 pb-2 mt-8">
-         <span className="text-gray-500 text-sm font-bold tracking-widest uppercase mb-2">Distance</span>
+      {/* Primary Stat: Distance - Scaled Dynamically */}
+      <div className="flex items-end justify-between border-b border-gray-800 pb-2">
+         <span className="text-gray-500 text-sm font-bold tracking-widest uppercase mb-4 md:mb-6">Distance</span>
          <div className="text-right">
-             <span className="text-6xl font-black text-white brand-font tracking-tighter leading-none">{distance}</span>
-             <span className="text-lg text-gray-400 ml-2 font-bold">{distanceUnit}</span>
+             <span className="text-[13vw] md:text-[7rem] font-black text-white brand-font tracking-tighter leading-none block">{distance}</span>
+             <span className="text-xl md:text-3xl text-gray-400 font-bold block -mt-2">{distanceUnit}</span>
          </div>
       </div>
 
-      {/* Secondary Stats Row */}
-      <div className="grid grid-cols-2 gap-8 mt-2">
+      {/* Secondary Stats Row - Scaled Up */}
+      <div className="grid grid-cols-2 gap-4 md:gap-8 mt-4">
         <div className="flex flex-col">
           <span className="text-gray-500 text-xs font-bold tracking-widest uppercase mb-1">Pace</span>
           <div className="flex items-baseline">
-             <span className="text-4xl font-bold text-cyan-400 brand-font tracking-tight">{pace}</span>
-             <span className="text-xs text-gray-500 ml-1">{paceUnit}</span>
+             <span className="text-3xl md:text-5xl font-bold text-cyan-400 brand-font tracking-tight">{pace}</span>
+             <span className="text-sm text-gray-500 ml-1">{paceUnit}</span>
           </div>
         </div>
 
         <div className="flex flex-col text-right">
           <span className="text-gray-500 text-xs font-bold tracking-widest uppercase mb-1">Burn</span>
           <div className="flex items-baseline justify-end">
-             <span className="text-4xl font-bold text-amber-500 brand-font tracking-tight">{calories}</span>
-             <span className="text-xs text-gray-500 ml-1">KCAL</span>
+             <span className="text-3xl md:text-5xl font-bold text-amber-500 brand-font tracking-tight">{calories}</span>
+             <span className="text-sm text-gray-500 ml-1">KCAL</span>
           </div>
         </div>
       </div>

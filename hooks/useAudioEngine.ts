@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MODE_CONFIG } from '../constants';
 import { AppMode } from '../types';
 
-export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
+export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpeedup: boolean = true) => {
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -25,6 +25,14 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
     onEndedRef.current = onEnded;
   }, [onEnded]);
 
+  // Determine effective playback rate based on settings
+  const getTargetPlaybackRate = (modeConfig: any) => {
+    if (mode === AppMode.OVERDRIVE && !overdriveSpeedup) {
+        return 1.0; // Force normal speed if overdrive speedup is disabled
+    }
+    return modeConfig.playbackRate;
+  };
+
   // Initialize Audio Context
   const initAudio = useCallback(() => {
     if (audioContextRef.current) return;
@@ -44,8 +52,8 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
     const gain = ctx.createGain();
 
     // Configure Nodes based on INITIAL mode
-    // This ensures no "ramp down" on first play if we start in Motivation mode
     const config = MODE_CONFIG[mode];
+    const initialRate = getTargetPlaybackRate(config);
 
     filter.type = 'lowpass';
     filter.frequency.value = config.filterFreq;
@@ -71,11 +79,11 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
     });
     
     // Initialize rate based on mode immediately
-    audio.playbackRate = config.playbackRate;
-    setRealtimeRate(config.playbackRate);
+    audio.playbackRate = initialRate;
+    setRealtimeRate(initialRate);
 
     setIsReady(true);
-  }, [mode]);
+  }, [mode]); // Re-init if mode changes? No, init once. Mode effects handled in other effect.
 
   // Load Track
   const loadTrack = useCallback((url: string, forcePlay = false) => {
@@ -87,11 +95,11 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
       audioElementRef.current.src = url;
       audioElementRef.current.load();
       
-      // Ensure the correct rate is applied after load, 
-      // preventing browser from resetting to 1.0 default
+      // Ensure the correct rate is applied after load
       const config = MODE_CONFIG[mode];
-      audioElementRef.current.playbackRate = config.playbackRate;
-      setRealtimeRate(config.playbackRate);
+      const rate = getTargetPlaybackRate(config);
+      audioElementRef.current.playbackRate = rate;
+      setRealtimeRate(rate);
 
       if (shouldPlay) {
         audioElementRef.current.play().catch(e => console.error("Play failed", e));
@@ -100,7 +108,7 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
         setIsPlaying(false);
       }
     }
-  }, [initAudio, mode]);
+  }, [initAudio, mode, overdriveSpeedup]);
 
   // Play/Pause
   const togglePlay = useCallback(async () => {
@@ -144,7 +152,7 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
     // 2. Adjust Playback Rate with custom interpolation loop
     const audio = audioElementRef.current;
     const startRate = audio.playbackRate;
-    const targetRate = config.playbackRate;
+    const targetRate = getTargetPlaybackRate(config);
     
     // If we are already at target (within tolerance), just update state and return
     if (Math.abs(startRate - targetRate) < 0.001) {
@@ -185,7 +193,7 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void) => {
       }
     };
 
-  }, [mode]);
+  }, [mode, overdriveSpeedup]);
 
   return {
     isReady,

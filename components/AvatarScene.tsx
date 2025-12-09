@@ -1,5 +1,4 @@
-
-import React, { useRef, useMemo, ReactNode, Component } from 'react';
+import React, { useRef, useMemo, ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere } from '@react-three/drei';
 import * as THREE from 'three';
@@ -11,7 +10,7 @@ interface AvatarSceneProps {
   mode: AppMode;
   bpm: number;
   isIgnited: boolean;
-  unlockedItems: string[];
+  equippedItems: string[];
   isPlaying: boolean;
   isStandby?: boolean;
   avatarUrl: string;
@@ -30,12 +29,9 @@ interface ErrorBoundaryState {
 
 // Error Boundary to catch 3D Loading Errors (e.g., fetch failed)
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  state: ErrorBoundaryState = { hasError: false };
 
-  static getDerivedStateFromError() {
+  static getDerivedStateFromError(_: any): ErrorBoundaryState {
     return { hasError: true };
   }
   
@@ -73,7 +69,7 @@ const FallbackAvatar: React.FC<{ color: string }> = ({ color }) => {
   );
 };
 
-const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgnited: boolean; unlockedItems: string[]; isPlaying: boolean; isStandby: boolean; avatarUrl: string; targetMin: number; targetMax: number }> = ({ color, mode, bpm, isIgnited, unlockedItems, isPlaying, isStandby, avatarUrl, targetMin, targetMax }) => {
+const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgnited: boolean; equippedItems: string[]; isPlaying: boolean; isStandby: boolean; avatarUrl: string; targetMin: number; targetMax: number }> = ({ color, mode, bpm, isIgnited, equippedItems, isPlaying, isStandby, avatarUrl, targetMin, targetMax }) => {
   const groupRef = useRef<THREE.Group>(null);
   
   // Calculate Light Direction (Sun Position)
@@ -143,7 +139,7 @@ const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgni
               mode={mode}
               avatarUrl={avatarUrl} 
               isStandby={isStandby} 
-              unlockedItems={unlockedItems} 
+              equippedItems={equippedItems} 
               targetMin={targetMin}
               targetMax={targetMax}
             />
@@ -158,14 +154,14 @@ const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgni
   );
 };
 
-export const AvatarScene: React.FC<AvatarSceneProps> = ({ color, mode, bpm, isIgnited, unlockedItems, isPlaying, isStandby = false, avatarUrl, targetMin, targetMax }) => {
+export const AvatarScene: React.FC<AvatarSceneProps> = ({ color, mode, bpm, isIgnited, equippedItems, isPlaying, isStandby = false, avatarUrl, targetMin, targetMax }) => {
   return (
     <Canvas 
         camera={{ position: [0, 0, 10], fov: 45 }} 
         gl={{ alpha: true, antialias: true }}
         className="w-full h-full pointer-events-none"
     >
-      <SceneContent color={color} mode={mode} bpm={bpm} isIgnited={isIgnited} unlockedItems={unlockedItems} isPlaying={isPlaying} isStandby={isStandby} avatarUrl={avatarUrl} targetMin={targetMin} targetMax={targetMax} />
+      <SceneContent color={color} mode={mode} bpm={bpm} isIgnited={isIgnited} equippedItems={equippedItems} isPlaying={isPlaying} isStandby={isStandby} avatarUrl={avatarUrl} targetMin={targetMin} targetMax={targetMax} />
     </Canvas>
   );
 };

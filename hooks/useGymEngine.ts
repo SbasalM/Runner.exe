@@ -7,7 +7,8 @@ export const useGymEngine = (isPlaying: boolean, currentMode: AppMode, isActive:
   const [zoneStats, setZoneStats] = useState<Record<AppMode, number>>({
     [AppMode.MOTIVATION]: 0,
     [AppMode.ZONE]: 0,
-    [AppMode.OVERDRIVE]: 0
+    [AppMode.OVERDRIVE]: 0,
+    [AppMode.COOLDOWN]: 0
   });
 
   useEffect(() => {
@@ -17,7 +18,8 @@ export const useGymEngine = (isPlaying: boolean, currentMode: AppMode, isActive:
       setZoneStats({
         [AppMode.MOTIVATION]: 0,
         [AppMode.ZONE]: 0,
-        [AppMode.OVERDRIVE]: 0
+        [AppMode.OVERDRIVE]: 0,
+        [AppMode.COOLDOWN]: 0
       });
       return;
     }

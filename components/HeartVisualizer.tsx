@@ -1,6 +1,5 @@
-
 import React, { useMemo, useEffect, useState, useRef } from 'react';
-import { AppMode } from '../types';
+import { AppMode, InputSource } from '../types';
 import { MODE_CONFIG } from '../constants';
 import { AvatarScene } from './AvatarScene';
 import { MarqueeStatus } from './MarqueeStatus';
@@ -13,16 +12,32 @@ interface HeartVisualizerProps {
   showBpm: boolean;
   isPlaying: boolean;
   onClick: () => void;
-  unlockedItems: string[];
+  equippedItems: string[];
   isStandby?: boolean;
   avatarUrl: string;
   targetMin: number;
   targetMax: number;
+  inputSource: InputSource;
+  timerElapsed: number; // in seconds
 }
 
 type TransitionStage = 'IDLE' | 'AVATAR_SPOTLIGHT' | 'BPM_SPOTLIGHT';
 
-export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, label, showBpm, isPlaying, onClick, unlockedItems, isStandby = false, avatarUrl, targetMin, targetMax }) => {
+export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ 
+  bpm, 
+  mode, 
+  label, 
+  showBpm, 
+  isPlaying, 
+  onClick, 
+  equippedItems, 
+  isStandby = false, 
+  avatarUrl, 
+  targetMin, 
+  targetMax,
+  inputSource,
+  timerElapsed
+}) => {
   const config = MODE_CONFIG[mode];
   const beatDuration = useMemo(() => 60 / bpm, [bpm]);
 
@@ -134,8 +149,21 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
     return () => cancelAnimationFrame(animationFrameId);
   }, [isPlaying, isStandby, isAvatarSpotlight]); 
 
+  // --- Timer Display Logic ---
+  const formattedTime = useMemo(() => {
+    const mins = Math.floor(timerElapsed / 60);
+    const secs = timerElapsed % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, [timerElapsed]);
+
+  // Determine what to show in the center: Time (Timer Mode) or BPM (Heart Sync Mode)
+  const displayValue = inputSource === InputSource.TIMER ? formattedTime : bpm;
+  const displayLabel = inputSource === InputSource.TIMER ? "TIME" : "BPM";
+
   return (
-    <div className="relative flex items-center justify-center w-64 h-64 mt-4 mb-24 cursor-default group overflow-visible">
+    // Updated container dimensions to use Viewport Height (vh) instead of fixed pixels
+    // This allows it to scale nicely on different screens within a flex-1 container
+    <div className="relative flex items-center justify-center h-[35vh] max-h-[400px] aspect-square my-2 cursor-default group overflow-visible shrink-0">
       
       {/* CINEMATIC OVERLAY */}
       <div 
@@ -144,10 +172,10 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
       ></div>
 
       {/* Outer Glow */}
-      <div className={`absolute inset-0 rounded-full blur-3xl ${config.borderColor} bg-current transition-all duration-[3000ms] ${glowOpacity}`}></div>
+      <div className={`absolute inset-0 rounded-full blur-3xl pointer-events-none ${config.borderColor} bg-current transition-all duration-[3000ms] ${glowOpacity}`}></div>
       
       {/* Outer Ring */}
-      <div className={`absolute inset-0 rounded-full border-2 ${config.borderColor} transition-all duration-[3000ms] ${ringOpacity}`}></div>
+      <div className={`absolute inset-0 rounded-full border-2 pointer-events-none ${config.borderColor} transition-all duration-[3000ms] ${ringOpacity}`}></div>
 
       {/* Pulsing Core Container */}
       <div 
@@ -180,7 +208,7 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
                 mode={mode}
                 bpm={bpm}
                 isIgnited={isOverlayActive}
-                unlockedItems={unlockedItems}
+                equippedItems={equippedItems}
                 isPlaying={isPlaying}
                 isStandby={isStandby}
                 avatarUrl={avatarUrl}
@@ -190,13 +218,12 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
          </div>
 
          {/* TEXT LAYER - MARQUEE */}
-         {/* Expanded to 120% width and centered to allow text to feather out wider. Lowered with pb-3 */}
          <div 
            className={`
              absolute flex items-end justify-center z-10 
              w-[120%] h-full left-1/2 -translate-x-1/2 
              pb-3 overflow-hidden
-             transition-opacity duration-500
+             transition-opacity duration-500 pointer-events-none
              ${config.color}
              ${isOverlayActive ? 'opacity-0' : 'opacity-100'}
            `}
@@ -208,13 +235,17 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({ bpm, mode, lab
          </div>
       </div>
 
-      {/* GHOST BPM DISPLAY */}
-      {/* Passing 'mode' directly now instead of ghostMode */}
-      <GhostBPM bpm={bpm} mode={mode} isSpotlight={isBpmSpotlight} />
+      {/* GHOST VALUE DISPLAY (BPM OR TIME) */}
+      <GhostBPM 
+        value={displayValue} 
+        label={displayLabel} 
+        mode={mode} 
+        isSpotlight={isBpmSpotlight} 
+      />
 
       {/* Ping Ring */}
       <div 
-        className={`absolute inset-0 rounded-full border ${config.borderColor} transition-opacity duration-1000 ${isPlaying ? 'opacity-100' : 'opacity-0'}`}
+        className={`absolute inset-0 rounded-full border pointer-events-none ${config.borderColor} transition-opacity duration-1000 ${isPlaying ? 'opacity-100' : 'opacity-0'}`}
         style={{
           animation: isPlaying ? `ping ${beatDuration}s cubic-bezier(0, 0, 0.2, 1) infinite` : 'none'
         }}

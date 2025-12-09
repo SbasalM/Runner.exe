@@ -42,15 +42,15 @@ export const useProgression = (currentSessionDistanceKm: number) => {
     let unlockedName = '';
 
     // Unlock Logic
-    // Level 1: Cyber Jaw at 0.5 Miles
-    if (totalMiles >= 0.5 && !newItems.has('jaw')) {
+    // Level 1: Cyber Jaw at 10.0 Miles
+    if (totalMiles >= 10.0 && !newItems.has('jaw')) {
         newItems.add('jaw');
         unlockedName = 'CYBER JAW';
         unlocked = true;
     }
 
-    // Level 2: Neural Halo at 1.0 Miles
-    if (totalMiles >= 1.0 && !newItems.has('neural_halo')) {
+    // Level 2: Neural Halo at 20.0 Miles
+    if (totalMiles >= 20.0 && !newItems.has('neural_halo')) {
         newItems.add('neural_halo');
         unlockedName = 'NEURAL HALO';
         unlocked = true;

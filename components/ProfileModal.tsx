@@ -6,14 +6,23 @@ interface ProfileModalProps {
   onClose: () => void;
   lifetimeDistance: number;
   unlockedItems: string[];
+  equippedItems: string[];
+  onToggleEquip: (item: string) => void;
 }
 
-export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, lifetimeDistance, unlockedItems }) => {
+export const ProfileModal: React.FC<ProfileModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  lifetimeDistance, 
+  unlockedItems, 
+  equippedItems,
+  onToggleEquip 
+}) => {
   if (!isOpen) return null;
 
   const items = [
-    { id: 'jaw', name: 'Cyber Jaw', req: '0.5 Miles' },
-    { id: 'neural_halo', name: 'Neural Halo', req: '1.0 Miles' }
+    { id: 'jaw', name: 'Cyber Jaw', req: '10.0 Miles' },
+    { id: 'neural_halo', name: 'Neural Halo', req: '20.0 Miles' }
   ];
 
   return (
@@ -63,12 +72,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, lif
             <div className="space-y-3">
                 {items.map(item => {
                     const isUnlocked = unlockedItems.includes(item.id);
+                    const isEquipped = equippedItems.includes(item.id);
+                    
                     return (
                         <div 
                             key={item.id} 
                             className={`relative p-4 rounded-xl border flex items-center justify-between transition-all ${
                                 isUnlocked 
-                                ? 'bg-cyan-900/20 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]' 
+                                ? 'bg-cyan-900/10 border-cyan-500/30' 
                                 : 'bg-zinc-800/50 border-zinc-700 opacity-60 grayscale'
                             }`}
                         >
@@ -79,19 +90,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, lif
                                 <span className="text-[10px] text-gray-500 font-mono mt-1">Unlock: {item.req}</span>
                             </div>
                             
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${
-                                isUnlocked ? 'bg-cyan-500 border-cyan-400 text-black' : 'bg-transparent border-gray-600 text-gray-600'
-                            }`}>
-                                {isUnlocked ? (
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                    </svg>
-                                ) : (
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                                    </svg>
-                                )}
-                            </div>
+                            {isUnlocked ? (
+                                <button 
+                                    onClick={() => onToggleEquip(item.id)}
+                                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border ${
+                                        isEquipped 
+                                        ? 'bg-green-500/20 text-green-400 border-green-500 hover:bg-green-500/30' 
+                                        : 'bg-cyan-500/20 text-cyan-400 border-cyan-500 hover:bg-cyan-500/30'
+                                    }`}
+                                >
+                                    {isEquipped ? 'EQUIPPED' : 'EQUIP'}
+                                </button>
+                            ) : (
+                                <div className="px-2 py-1 rounded bg-zinc-800 text-zinc-500 text-[10px] font-bold uppercase tracking-wider border border-zinc-700">
+                                    LOCKED
+                                </div>
+                            )}
                         </div>
                     )
                 })}

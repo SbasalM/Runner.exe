@@ -1,5 +1,5 @@
 
-import { AppMode } from "./types";
+import { AppMode, InputSource } from "./types";
 
 export const BPM_MIN = 60;
 export const BPM_MAX = 180;

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings, UnitSystem } from '../types';
+import { Settings, UnitSystem, InputSource } from '../types';
 import { BPM_MIN, BPM_MAX, DEMO_TRACKS } from '../constants';
 
 interface SettingsModalProps {
@@ -24,6 +24,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
 
   const handleUnitToggle = (unit: UnitSystem) => {
     setLocalSettings(prev => ({ ...prev, units: unit }));
+  };
+  
+  const handleInputSourceToggle = (source: InputSource) => {
+      setLocalSettings(prev => ({ ...prev, inputSource: source }));
   };
 
   const handleServiceToggle = (serviceId: string) => {
@@ -55,6 +59,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
     }
   };
 
+  const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setLocalSettings(prev => ({ ...prev, sessionDuration: Number(e.target.value) }));
+  };
+
+  const handleToggle = (key: keyof Settings) => {
+      setLocalSettings(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
   const handleSave = () => {
     onUpdate(localSettings);
     onClose();
@@ -62,7 +74,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in-up">
-      <div className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-6 shadow-2xl max-h-[80vh] overflow-y-auto">
+      <div className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6 sticky top-0 bg-zinc-900 py-2 z-10 border-b border-zinc-800">
           <h2 className="text-white font-bold brand-font tracking-wider text-xl">SYSTEM SETTINGS</h2>
           {/* Close without saving */}
@@ -73,6 +85,96 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
           </button>
         </div>
 
+        {/* --- INPUT MODE SELECTOR --- */}
+        <div className="mb-8">
+            <label className="text-xs text-gray-400 uppercase tracking-widest font-bold mb-3 block">Operation Mode</label>
+            <div className="flex bg-zinc-800 p-1 rounded-lg">
+                <button
+                    onClick={() => handleInputSourceToggle(InputSource.HEART_RATE)}
+                    className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${
+                        localSettings.inputSource === InputSource.HEART_RATE ? 'bg-cyan-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'
+                    }`}
+                >
+                    HEART SYNC
+                </button>
+                <button
+                    onClick={() => handleInputSourceToggle(InputSource.TIMER)}
+                    className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${
+                        localSettings.inputSource === InputSource.TIMER ? 'bg-fuchsia-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'
+                    }`}
+                >
+                    TIMER MODE
+                </button>
+            </div>
+            <p className="text-[10px] text-gray-500 mt-2">
+                {localSettings.inputSource === InputSource.HEART_RATE 
+                 ? "Adapts music to your simulated or real heart rate." 
+                 : "Follows a set duration schedule. Useful if no heart monitor."}
+            </p>
+        </div>
+
+        {/* --- TIMER CONFIG (Conditional) --- */}
+        {localSettings.inputSource === InputSource.TIMER && (
+            <div className="mb-8 p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+                 <label className="text-xs text-fuchsia-400 uppercase tracking-widest font-bold mb-2 block">Workout Duration</label>
+                 <div className="flex items-center justify-between mb-2">
+                    <span className="text-white font-mono text-xl">{localSettings.sessionDuration} MIN</span>
+                 </div>
+                 <input 
+                    type="range" 
+                    min={5} 
+                    max={120} 
+                    step={5}
+                    value={localSettings.sessionDuration} 
+                    onChange={handleDurationChange}
+                    className="w-full appearance-none bg-zinc-700 h-2 rounded-full overflow-hidden [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-fuchsia-500 [&::-webkit-slider-thumb]:rounded-full"
+                 />
+                 
+                 <div className="mt-4 flex items-center justify-between">
+                     <span className="text-xs text-gray-400 font-bold uppercase">Slug Start (10s Warmup)</span>
+                     <button 
+                        onClick={() => handleToggle('slugStart')}
+                        className={`w-10 h-5 rounded-full relative transition-colors ${localSettings.slugStart ? 'bg-fuchsia-500' : 'bg-gray-700'}`}
+                     >
+                         <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${localSettings.slugStart ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                     </button>
+                 </div>
+                 <p className="text-[10px] text-gray-500 mt-1">Starts in Motivation mode for 10s before entering Zone.</p>
+            </div>
+        )}
+
+        {/* --- GLOBAL AUDIO CONFIG --- */}
+        <div className="mb-8">
+            <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-gray-400 uppercase tracking-widest font-bold">Overdrive Music Speedup</label>
+                <button 
+                    onClick={() => handleToggle('overdriveSpeedup')}
+                    className={`w-10 h-5 rounded-full relative transition-colors ${localSettings.overdriveSpeedup ? 'bg-cyan-500' : 'bg-gray-700'}`}
+                >
+                    <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${localSettings.overdriveSpeedup ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                </button>
+            </div>
+            <p className="text-[10px] text-gray-500">
+                If enabled, music speeds up (1.1x) when in Overdrive mode.
+            </p>
+        </div>
+
+        {/* --- RUN SETTINGS --- */}
+        <div className="mb-8">
+            <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-gray-400 uppercase tracking-widest font-bold">GPS Tracking (Run Mode)</label>
+                <button 
+                    onClick={() => handleToggle('useGPS')}
+                    className={`w-10 h-5 rounded-full relative transition-colors ${localSettings.useGPS ? 'bg-cyan-500' : 'bg-gray-700'}`}
+                >
+                    <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${localSettings.useGPS ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                </button>
+            </div>
+            <p className="text-[10px] text-gray-500">
+                Uses your device's location to calculate real distance and pace. Requires permission.
+            </p>
+        </div>
+
         {/* Units Toggle */}
         <div className="mb-8">
           <label className="text-xs text-gray-400 uppercase tracking-widest font-bold mb-3 block">Display Units</label>
@@ -80,7 +182,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
             <button
               onClick={() => handleUnitToggle(UnitSystem.IMPERIAL)}
               className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${
-                localSettings.units === UnitSystem.IMPERIAL ? 'bg-cyan-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'
+                localSettings.units === UnitSystem.IMPERIAL ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-white'
               }`}
             >
               IMPERIAL (MI)
@@ -88,7 +190,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
             <button
               onClick={() => handleUnitToggle(UnitSystem.METRIC)}
               className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${
-                localSettings.units === UnitSystem.METRIC ? 'bg-cyan-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'
+                localSettings.units === UnitSystem.METRIC ? 'bg-white text-black shadow-lg' : 'text-gray-500 hover:text-white'
               }`}
             >
               METRIC (KM)
@@ -126,51 +228,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
           </div>
         </div>
 
-        {/* Target Zone Config */}
-        <div className="mb-6">
-           <label className="text-xs text-gray-400 uppercase tracking-widest font-bold mb-4 block">Target HR Zone</label>
-           
-           <div className="flex items-center justify-between text-white font-mono font-bold mb-2">
-              <span className="text-amber-500">{localSettings.targetMin} BPM</span>
-              <span className="text-fuchsia-500">{localSettings.targetMax} BPM</span>
-           </div>
+        {/* Target Zone Config - Only visible in Heart Rate Mode */}
+        {localSettings.inputSource === InputSource.HEART_RATE && (
+            <div className="mb-6">
+            <label className="text-xs text-gray-400 uppercase tracking-widest font-bold mb-4 block">Target HR Zone</label>
+            
+            <div className="flex items-center justify-between text-white font-mono font-bold mb-2">
+                <span className="text-amber-500">{localSettings.targetMin} BPM</span>
+                <span className="text-fuchsia-500">{localSettings.targetMax} BPM</span>
+            </div>
 
-           <div className="relative h-12">
-              {/* Visual Track */}
-              <div className="absolute top-1/2 -translate-y-1/2 w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-                 <div 
-                   className="absolute h-full bg-cyan-500/50"
-                   style={{
-                     left: `${((localSettings.targetMin - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 100}%`,
-                     right: `${100 - ((localSettings.targetMax - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 100}%`
-                   }}
-                 ></div>
-              </div>
+            <div className="relative h-12">
+                {/* Visual Track */}
+                <div className="absolute top-1/2 -translate-y-1/2 w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div 
+                    className="absolute h-full bg-cyan-500/50"
+                    style={{
+                        left: `${((localSettings.targetMin - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 100}%`,
+                        right: `${100 - ((localSettings.targetMax - BPM_MIN) / (BPM_MAX - BPM_MIN)) * 100}%`
+                    }}
+                    ></div>
+                </div>
 
-              {/* Min Slider */}
-              <input 
-                type="range" 
-                min={BPM_MIN} 
-                max={BPM_MAX} 
-                value={localSettings.targetMin} 
-                onChange={handleMinChange}
-                className="absolute w-full pointer-events-none appearance-none bg-transparent z-20 top-1/2 -translate-y-1/2 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-amber-500"
-              />
+                {/* Min Slider */}
+                <input 
+                    type="range" 
+                    min={BPM_MIN} 
+                    max={BPM_MAX} 
+                    value={localSettings.targetMin} 
+                    onChange={handleMinChange}
+                    className="absolute w-full pointer-events-none appearance-none bg-transparent z-20 top-1/2 -translate-y-1/2 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-amber-500"
+                />
 
-              {/* Max Slider */}
-              <input 
-                type="range" 
-                min={BPM_MIN} 
-                max={BPM_MAX} 
-                value={localSettings.targetMax} 
-                onChange={handleMaxChange}
-                className="absolute w-full pointer-events-none appearance-none bg-transparent z-20 top-1/2 -translate-y-1/2 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-fuchsia-500"
-              />
-           </div>
-           <p className="text-[10px] text-gray-500 mt-2 text-center">
-             Adjust the range to calibrate music transition points.
-           </p>
-        </div>
+                {/* Max Slider */}
+                <input 
+                    type="range" 
+                    min={BPM_MIN} 
+                    max={BPM_MAX} 
+                    value={localSettings.targetMax} 
+                    onChange={handleMaxChange}
+                    className="absolute w-full pointer-events-none appearance-none bg-transparent z-20 top-1/2 -translate-y-1/2 [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:bg-fuchsia-500"
+                />
+            </div>
+            <p className="text-[10px] text-gray-500 mt-2 text-center">
+                Adjust the range to calibrate music transition points.
+            </p>
+            </div>
+        )}
 
         <button 
           onClick={handleSave}

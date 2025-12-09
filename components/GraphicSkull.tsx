@@ -1,6 +1,5 @@
-
 import React, { useMemo, useEffect, useRef } from 'react';
-import { useGLTF } from '@react-three/drei';
+import { useGLTF, Center } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BPM_MIN, BPM_MAX, SKULL_MODEL_URL } from '../constants';
@@ -12,12 +11,12 @@ interface GraphicSkullProps {
   mode: AppMode;
   avatarUrl: string;
   isStandby?: boolean;
-  unlockedItems: string[];
+  equippedItems: string[];
   targetMin: number;
   targetMax: number;
 }
 
-export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode, avatarUrl, isStandby = false, unlockedItems = [], targetMin, targetMax }) => {
+export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode, avatarUrl, isStandby = false, equippedItems = [], targetMin, targetMax }) => {
   const { scene } = useGLTF(avatarUrl);
   
   // Clone scene to avoid mutating the cached GLTF if it's reused elsewhere
@@ -30,7 +29,9 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
   
   // Flash Animation Ref (0.0 to 1.0) for eyes
   const flashLevel = useRef(0.0);
-  const wasIgnitedRef = useRef(false);
+  
+  // State tracking for transitions
+  const prevPhaseRef = useRef<number>(0); // 0: Standby/Low, 1: Zone, 2: Overdrive
 
   // --- MATERIAL DEFINITIONS ---
 
@@ -151,12 +152,12 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
     
-    // 1. VISIBILITY MANAGEMENT (Based on Unlocks)
+    // 1. VISIBILITY MANAGEMENT (Based on Equipped)
     if (jawRef.current) {
-        jawRef.current.visible = unlockedItems.includes('jaw');
+        jawRef.current.visible = equippedItems.includes('jaw');
     }
     if (haloRef.current) {
-        haloRef.current.visible = unlockedItems.includes('neural_halo');
+        haloRef.current.visible = equippedItems.includes('neural_halo');
     }
 
     // 2. FLASH DECAY
@@ -164,25 +165,35 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
 
     // 3. COLOR & INTENSITY LOGIC (Skull & Jaw)
     let targetIntensity = 1.0;
+    
+    // Determine Current Phase for Transitions
+    // 0: Standby/Low (< Target Min)
+    // 1: Zone (Min - Max)
+    // 2: Overdrive (> Max)
+    let currentPhase = 0;
 
     if (isStandby) {
+        currentPhase = 0;
         targetColor.copy(colorGray);
         targetIntensity = 0.5;
     } else {
         if (bpm < targetMin) {
             // Motivation Phase
+            currentPhase = 0;
             const range = targetMin - BPM_MIN;
             const progress = range > 0 ? Math.max(0, Math.min(1, (bpm - BPM_MIN) / range)) : 1;
             targetColor.lerpColors(colorGray, colorOrange, progress);
             targetIntensity = 1.0;
-        } else if (bpm < targetMax) {
+        } else if (bpm <= targetMax) {
             // Target Zone
+            currentPhase = 1;
             targetColor.copy(colorCyan);
             const range = targetMax - targetMin;
             const progress = range > 0 ? Math.max(0, Math.min(1, (bpm - targetMin) / range)) : 1;
             targetIntensity = THREE.MathUtils.lerp(1.0, 2.0, progress);
         } else {
             // Overdrive
+            currentPhase = 2;
             targetColor.copy(colorPurple);
             const range = BPM_MAX - targetMax;
             const progress = range > 0 ? Math.max(0, Math.min(1, (bpm - targetMax) / range)) : 1;
@@ -191,12 +202,13 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
     }
 
     // Apply to Skull (Neon Shader)
+    // Skull transitions smoothly, NO FLASH
     const smoothFactor = Math.min(1.0, delta * 2.0);
     neonMaterial.uniforms.uColor.value.lerp(targetColor, smoothFactor);
     neonMaterial.uniforms.uIntensity.value = THREE.MathUtils.lerp(neonMaterial.uniforms.uIntensity.value, targetIntensity, smoothFactor);
 
     // 4. JAW ANIMATION 
-    if (jawRef.current && unlockedItems.includes('jaw')) {
+    if (jawRef.current && equippedItems.includes('jaw')) {
         let targetRot = 0;
         // Only open slightly on Cooldown
         if (mode === AppMode.COOLDOWN) {
@@ -206,21 +218,29 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
     }
 
     // 5. HALO ANIMATION (Pulse Only, No Rotation)
-    if (haloRef.current && unlockedItems.includes('neural_halo')) {
+    if (haloRef.current && equippedItems.includes('neural_halo')) {
         const pulse = 1.5 + Math.sin(t * 3.0) * 0.5;
         haloMaterial.emissiveIntensity = pulse;
         // Ensure no accidental rotation is accumulated
-        haloRef.current.rotation.set(Math.PI / 2, 0, 0); // Reset to default orientation (flat on head usually)
+        haloRef.current.rotation.set(Math.PI / 2, 0, 0); 
     }
 
     // 6. EYE LOGIC (Black -> Red -> White)
-    const isIgnited = bpm >= targetMin && !isStandby;
     
-    // Trigger Flash on Ignition
-    if (isIgnited && !wasIgnitedRef.current) {
-        flashLevel.current = 1.0;
+    // TRANSITION DETECTION FOR FLASH
+    // Trigger Flash on:
+    // a) Ignition (Phase 0 -> 1)
+    // b) Overdrive (Phase 1 -> 2)
+    if (!isStandby) {
+        if (prevPhaseRef.current < 1 && currentPhase >= 1) {
+            // Ignition Flash
+            flashLevel.current = 1.0;
+        } else if (prevPhaseRef.current < 2 && currentPhase >= 2) {
+            // Overdrive Flash
+            flashLevel.current = 1.0;
+        }
     }
-    wasIgnitedRef.current = isIgnited;
+    prevPhaseRef.current = currentPhase;
 
     let currentEyeColor = colorBlack.clone();
 
@@ -232,7 +252,8 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
         currentEyeColor.copy(colorBlack);
     } else if (bpm <= targetMax) {
         // Phase 2: Red
-        currentEyeColor.copy(colorRed);
+        // BOOSTED SCALAR to 10.0 to ensure emission is visible against dark skull
+        currentEyeColor.copy(colorRed).multiplyScalar(10.0);
     } else {
         // Phase 3: White
         currentEyeColor.copy(colorWhite);
@@ -241,7 +262,7 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
         currentEyeColor.multiplyScalar(flicker);
     }
 
-    // Apply Flash (Ignition Burst)
+    // Apply Flash (Ignition/Transition Burst)
     if (flashLevel.current > 0.01) {
         currentEyeColor.lerp(colorWhite, flashLevel.current);
         const flashBoost = 1.0 + (flashLevel.current * 10.0);
@@ -253,7 +274,9 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
 
   return (
     <group scale={2.0}>
-        <primitive object={clone} />
+        <Center>
+            <primitive object={clone} />
+        </Center>
     </group>
   );
 };
