@@ -1,5 +1,8 @@
 {
   "name": "CyberPump",
   "description": "An adaptive biofeedback music engine for cyberpunk fitness.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
 }

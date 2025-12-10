@@ -113,6 +113,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
             </p>
         </div>
 
+        {/* --- EXPERIMENTAL: GESTURE CONTROL --- */}
+        <div className="mb-8 p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">
+            <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-green-400 uppercase tracking-widest font-bold">Hands-Free Gestures</label>
+                <button 
+                    onClick={() => handleToggle('gestureControlEnabled')}
+                    className={`w-10 h-5 rounded-full relative transition-colors ${localSettings.gestureControlEnabled ? 'bg-green-500' : 'bg-gray-700'}`}
+                >
+                    <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${localSettings.gestureControlEnabled ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                </button>
+            </div>
+            <p className="text-[10px] text-gray-400 leading-relaxed mb-2">
+                Control playback and volume using hand signs via webcam.
+            </p>
+            {localSettings.gestureControlEnabled && (
+                <div className="bg-green-900/20 border border-green-900/50 p-2 rounded text-[9px] text-green-300/80">
+                    <span className="font-bold">⚠️ DISCLAIMER:</span> Best results when phone is stationary (e.g. Treadmill/Bench). Moving armbands may be unreliable.
+                </div>
+            )}
+        </div>
+
         {/* --- TIMER CONFIG (Conditional) --- */}
         {localSettings.inputSource === InputSource.TIMER && (
             <div className="mb-8 p-4 bg-zinc-800/30 rounded-lg border border-zinc-700">

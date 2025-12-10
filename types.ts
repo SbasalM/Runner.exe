@@ -37,6 +37,9 @@ export interface Settings {
 
   // Run Settings
   useGPS: boolean; // Use Real GPS for distance/pace
+
+  // Experimental
+  gestureControlEnabled: boolean;
 }
 
 export interface AudioState {

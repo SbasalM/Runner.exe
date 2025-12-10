@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource, WorkoutSession } from './types';
 import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG, SKULL_MODEL_URL, DEMO_PLAYLIST } from './constants';
@@ -15,6 +14,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ProfileModal } from './components/ProfileModal';
 import { SplashScreen } from './components/SplashScreen';
 import { WorkoutSummary } from './components/WorkoutSummary';
+import { GestureController } from './components/GestureController';
 
 const App: React.FC = () => {
   // --- Global State ---
@@ -43,7 +43,8 @@ const App: React.FC = () => {
     sessionDuration: 30, // 30 minutes default
     slugStart: true,
     overdriveSpeedup: true,
-    useGPS: false
+    useGPS: false,
+    gestureControlEnabled: false
   });
 
   const [isCooldown, setIsCooldown] = useState(false);
@@ -161,7 +162,7 @@ const App: React.FC = () => {
 
   // --- Engines ---
   // Pass overdrive settings to audio engine
-  const { isPlaying, togglePlay, loadTrack } = useAudioEngine(currentMode, onTrackEnd, settings.overdriveSpeedup);
+  const { isPlaying, togglePlay, loadTrack, volume, setVolume } = useAudioEngine(currentMode, onTrackEnd, settings.overdriveSpeedup);
   
   // Engines now only activate if global playing IS TRUE **AND** their specific mode is the Active Session
   const runStats = useRunEngine(effectiveBpm, isPlaying, settings.units, isPlaying && activeSessionMode === WorkoutMode.RUN && !isCooldown, settings.useGPS);
@@ -361,12 +362,32 @@ const App: React.FC = () => {
   const handleUpdateSession = (updatedSession: WorkoutSession) => {
       setWorkoutHistory(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
   };
+  
+  // Handlers for Gesture Controller (Wrapped for safety/clarity)
+  const handleToggleCooldown = () => {
+      setIsCooldown(prev => !prev);
+  };
+
+  const handleStopWorkout = () => {
+      handleFinishWorkout();
+  };
 
   return (
     <div className="h-[100dvh] w-full bg-[#050505] flex items-center justify-center p-0 md:p-8 font-mono overflow-hidden relative">
       
       {/* Splash Screen Overlay */}
       {!hasStarted && <SplashScreen onStart={() => setHasStarted(true)} />}
+
+      {/* Global Gesture Controller */}
+      <GestureController 
+          isEnabled={settings.gestureControlEnabled}
+          onPlayPause={handleGlobalPlayPause}
+          onNextTrack={() => handleSkip('next', true)}
+          onPrevTrack={() => handleSkip('prev', true)}
+          onCooldown={handleToggleCooldown}
+          onStopWorkout={handleStopWorkout}
+          isCooldown={isCooldown}
+      />
 
       {/* External Debug Panel */}
       <DebugPanel 

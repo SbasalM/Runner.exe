@@ -9,6 +9,7 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [realtimeRate, setRealtimeRate] = useState(1.0);
+  const [volume, setVolume] = useState(1.0); // 0.0 to 1.0
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
@@ -84,6 +85,14 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
 
     setIsReady(true);
   }, [mode]); // Re-init if mode changes? No, init once. Mode effects handled in other effect.
+
+  // Handle Volume Changes
+  useEffect(() => {
+      if (gainNodeRef.current) {
+          // Smooth volume transition
+          gainNodeRef.current.gain.setTargetAtTime(volume, audioContextRef.current?.currentTime || 0, 0.1);
+      }
+  }, [volume]);
 
   // Load Track
   const loadTrack = useCallback((url: string, forcePlay = false) => {
@@ -201,6 +210,8 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
     currentTime,
     duration,
     currentRate: realtimeRate, // Expose the animated value
+    volume,
+    setVolume,
     togglePlay,
     loadTrack
   };
