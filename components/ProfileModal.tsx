@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { WorkoutSession, WorkoutMode } from '../types';
 
@@ -10,16 +9,116 @@ interface ProfileModalProps {
   equippedItems: string[];
   onToggleEquip: (item: string) => void;
   history?: WorkoutSession[];
+  onUpdateSession?: (session: WorkoutSession) => void;
 }
+
+interface HistoryItemProps {
+  session: WorkoutSession;
+  onUpdate?: (s: WorkoutSession) => void;
+}
+
+const HistoryItem: React.FC<HistoryItemProps> = ({ session, onUpdate }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [title, setTitle] = useState(session.title || (session.mode === WorkoutMode.RUN ? 'Run Session' : 'Gym Session'));
+    const [weight, setWeight] = useState(session.weight || '');
+    const [reps, setReps] = useState(session.reps || '');
+
+    const handleSave = () => {
+        if (onUpdate) {
+            onUpdate({
+                ...session,
+                title,
+                weight,
+                reps
+            });
+        }
+        setIsEditing(false);
+    };
+
+    return (
+        <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3 flex flex-col gap-2">
+            <div className="flex justify-between items-start">
+                <div className="flex-1">
+                    <div className="text-[10px] text-gray-500 font-bold mb-1">
+                        {new Date(session.date).toLocaleDateString()} • {new Date(session.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </div>
+                    
+                    {isEditing ? (
+                        <input 
+                            type="text" 
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                            className="bg-zinc-900 border border-zinc-600 text-white font-bold brand-font text-sm w-full rounded px-2 py-1 mb-1 focus:outline-none focus:border-cyan-500"
+                            placeholder="Session Title"
+                        />
+                    ) : (
+                        <div className="text-sm text-white font-bold brand-font truncate max-w-[150px]">
+                            {title}
+                        </div>
+                    )}
+                    
+                    <div className="text-xs text-cyan-400 font-mono">
+                        {session.mode} • {session.mode === WorkoutMode.RUN ? session.distance : session.duration}
+                    </div>
+                </div>
+
+                <div className="text-right flex flex-col items-end">
+                    <div className="text-amber-500 font-bold text-sm mb-2">{session.calories} KCAL</div>
+                    <button 
+                        onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border transition-colors ${isEditing ? 'bg-green-500/20 text-green-400 border-green-500 hover:bg-green-500/30' : 'bg-zinc-700 text-zinc-400 border-zinc-600 hover:text-white'}`}
+                    >
+                        {isEditing ? 'SAVE' : 'EDIT'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Expanded details for GYM or if editing */}
+            {(session.mode === WorkoutMode.GYM || isEditing || session.weight || session.reps) && (
+                <div className="mt-2 pt-2 border-t border-zinc-700/50 grid grid-cols-2 gap-2">
+                    <div>
+                        <span className="text-[9px] text-gray-500 uppercase font-bold block">Weight</span>
+                        {isEditing ? (
+                            <input 
+                                type="text"
+                                value={weight}
+                                onChange={(e) => setWeight(e.target.value)}
+                                className="w-full bg-zinc-900 text-xs text-white p-1 rounded border border-zinc-600"
+                                placeholder="e.g. 150 lbs"
+                            />
+                        ) : (
+                            <span className="text-xs text-gray-300 font-mono">{weight || '-'}</span>
+                        )}
+                    </div>
+                    <div>
+                        <span className="text-[9px] text-gray-500 uppercase font-bold block">Reps / Sets</span>
+                        {isEditing ? (
+                            <input 
+                                type="text"
+                                value={reps}
+                                onChange={(e) => setReps(e.target.value)}
+                                className="w-full bg-zinc-900 text-xs text-white p-1 rounded border border-zinc-600"
+                                placeholder="e.g. 3 x 12"
+                            />
+                        ) : (
+                            <span className="text-xs text-gray-300 font-mono">{reps || '-'}</span>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({ 
   isOpen, 
   onClose, 
   lifetimeDistance, 
   unlockedItems, 
-  equippedItems,
+  equippedItems, 
   onToggleEquip,
-  history = []
+  history = [],
+  onUpdateSession
 }) => {
   if (!isOpen) return null;
 
@@ -148,19 +247,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                          </div>
                     ) : (
                         history.map(session => (
-                            <div key={session.id} className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3 flex justify-between items-center">
-                                <div>
-                                    <div className="text-xs text-gray-400 font-bold mb-1">
-                                        {new Date(session.date).toLocaleDateString()}
-                                    </div>
-                                    <div className="text-sm text-white font-bold brand-font">
-                                        {session.mode} • {session.mode === WorkoutMode.RUN ? session.distance : session.duration}
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-amber-500 font-bold text-sm">{session.calories} KCAL</div>
-                                </div>
-                            </div>
+                            <HistoryItem 
+                                key={session.id} 
+                                session={session} 
+                                onUpdate={onUpdateSession} 
+                            />
                         ))
                     )}
                 </div>

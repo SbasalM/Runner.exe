@@ -30,6 +30,10 @@ const App: React.FC = () => {
   
   // Settings & Modes
   const [workoutMode, setWorkoutMode] = useState<WorkoutMode>(WorkoutMode.RUN);
+  // Track which mode is effectively "Active" (accumulating data or paused mid-session)
+  // This separates the UI Tab (workoutMode) from the Engine State (activeSessionMode)
+  const [activeSessionMode, setActiveSessionMode] = useState<WorkoutMode | null>(null);
+
   const [settings, setSettings] = useState<Settings>({
     units: UnitSystem.IMPERIAL,
     targetMin: BPM_TARGET_LOW,
@@ -159,9 +163,9 @@ const App: React.FC = () => {
   // Pass overdrive settings to audio engine
   const { isPlaying, togglePlay, loadTrack } = useAudioEngine(currentMode, onTrackEnd, settings.overdriveSpeedup);
   
-  // Pass isActive flag to ensure stats pause during cooldown but don't auto-reset
-  const runStats = useRunEngine(effectiveBpm, isPlaying, settings.units, isPlaying && !isCooldown, settings.useGPS);
-  const gymStats = useGymEngine(isPlaying, currentMode, isPlaying && !isCooldown);
+  // Engines now only activate if global playing IS TRUE **AND** their specific mode is the Active Session
+  const runStats = useRunEngine(effectiveBpm, isPlaying, settings.units, isPlaying && activeSessionMode === WorkoutMode.RUN && !isCooldown, settings.useGPS);
+  const gymStats = useGymEngine(isPlaying, currentMode, isPlaying && activeSessionMode === WorkoutMode.GYM && !isCooldown);
   
   // Progression System
   const { unlockedItems, newUnlock, lifetimeDistanceMiles, toggleUnlock } = useProgression(runStats.rawDistanceKm);
@@ -273,38 +277,89 @@ const App: React.FC = () => {
     skipRef.current = handleSkip;
   }, [handleSkip]);
 
+  // --- Logic to Switch Tabs ---
+  const handleTabSwitch = (newMode: WorkoutMode) => {
+    if (newMode === workoutMode) return;
+    
+    // If currently playing, we must PAUSE/FREEZE because we are entering a new mode context.
+    if (isPlaying) {
+        togglePlay(); // This effectively pauses the engine via the isActive prop update
+        triggerToast("Session Paused");
+    }
+    
+    setWorkoutMode(newMode);
+  };
+
+  // --- Logic to Handle Play/Pause with Auto-End ---
+  const handleGlobalPlayPause = () => {
+      // 1. If currently playing, just Pause.
+      if (isPlaying) {
+          togglePlay();
+          return;
+      }
+
+      // 2. If resuming/starting:
+      // Check if we have a suspended session of a DIFFERENT type.
+      if (activeSessionMode && activeSessionMode !== workoutMode) {
+          // Detect Auto-End Scenario: User has switched tabs and is now starting a new workout type.
+          // End the previous one automatically.
+          handleFinishWorkout(activeSessionMode); 
+          triggerToast(`${activeSessionMode} Session Logged`);
+      }
+
+      // 3. Set Active Session to CURRENT tab and Play
+      setActiveSessionMode(workoutMode);
+      togglePlay();
+  };
+
   // --- Workout Finish Logic ---
-  const handleFinishWorkout = () => {
-    // 1. Capture Stats based on mode (Persisted during cooldown)
+  // Accepts optional mode to finish a specific suspended session type
+  const handleFinishWorkout = (modeToFinish?: WorkoutMode) => {
+    const targetMode = modeToFinish || workoutMode;
+    const isRun = targetMode === WorkoutMode.RUN;
+
+    // 1. Capture Stats based on mode 
     const sessionData: WorkoutSession = {
         id: Date.now().toString(),
         date: Date.now(),
-        mode: workoutMode,
-        calories: workoutMode === WorkoutMode.RUN ? runStats.calories : 0, // Simplified calories for now, could use gym calories later
-        duration: workoutMode === WorkoutMode.RUN ? '00:00' : gymStats.formattedTime
+        mode: targetMode,
+        title: `${targetMode === WorkoutMode.RUN ? 'Run' : 'Gym'} Session`,
+        calories: isRun ? runStats.calories : 0, 
+        duration: isRun ? '00:00' : gymStats.formattedTime
     };
 
-    if (workoutMode === WorkoutMode.RUN) {
+    if (isRun) {
         sessionData.distance = `${runStats.distance} ${runStats.distanceUnit}`;
         sessionData.avgPace = runStats.pace;
         sessionData.duration = "N/A"; 
+    } else {
+        // Gym specific fields can be edited later
     }
 
     // 2. Save to History
     setWorkoutHistory(prev => [sessionData, ...prev]);
     setLastSession(sessionData);
 
-    // 3. Reset Engine Stats explicitly
-    runStats.reset();
-    gymStats.reset();
-    setTimerElapsed(0);
+    // 3. Reset Engine Stats explicitly based on which one finished
+    if (isRun) {
+        runStats.reset();
+    } else {
+        gymStats.reset();
+    }
 
-    // 4. Reset UI State
-    setIsCooldown(false);
-    if (isPlaying) togglePlay(); // Stop music
+    // Only reset global timer if we finished the *current* active interaction
+    if (targetMode === activeSessionMode) {
+        setTimerElapsed(0);
+        setActiveSessionMode(null); // Clear active session
+        setIsCooldown(false);
+        if (isPlaying) togglePlay(); // Stop music
+        setShowSummaryModal(true);
+    }
+  };
 
-    // 5. Show Summary
-    setShowSummaryModal(true);
+  // Allow updating history items (e.g. from Profile Modal)
+  const handleUpdateSession = (updatedSession: WorkoutSession) => {
+      setWorkoutHistory(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
   };
 
   return (
@@ -314,7 +369,6 @@ const App: React.FC = () => {
       {!hasStarted && <SplashScreen onStart={() => setHasStarted(true)} />}
 
       {/* External Debug Panel */}
-      {/* Only show BPM controls in debug panel if we are in Heart Rate mode */}
       <DebugPanel 
         isOpen={showDebugPanel} 
         onClose={() => setShowDebugPanel(false)}
@@ -376,13 +430,13 @@ const App: React.FC = () => {
             {/* Run/Gym Switch - Center */}
             <div className="flex bg-transparent rounded-full p-1">
                 <button 
-                    onClick={() => setWorkoutMode(WorkoutMode.RUN)}
+                    onClick={() => handleTabSwitch(WorkoutMode.RUN)}
                     className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest transition-all ${workoutMode === WorkoutMode.RUN ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-gray-500 hover:text-white'}`}
                 >
                     RUN
                 </button>
                 <button 
-                    onClick={() => setWorkoutMode(WorkoutMode.GYM)}
+                    onClick={() => handleTabSwitch(WorkoutMode.GYM)}
                     className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest transition-all ${workoutMode === WorkoutMode.GYM ? 'bg-fuchsia-500 text-black shadow-lg shadow-fuchsia-500/20' : 'text-gray-500 hover:text-white'}`}
                 >
                     GYM
@@ -476,7 +530,7 @@ const App: React.FC = () => {
                             RESUME
                         </button>
                         <button
-                            onClick={handleFinishWorkout}
+                            onClick={() => handleFinishWorkout()}
                             className="flex-1 py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-red-900/40 text-red-400 border-red-500/50 hover:bg-red-500 hover:text-black"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -492,7 +546,7 @@ const App: React.FC = () => {
             <div className="w-full relative z-50">
                 <MediaPlayer 
                     isPlaying={isPlaying}
-                    onPlayPause={togglePlay}
+                    onPlayPause={handleGlobalPlayPause}
                     onPrev={() => handleSkip('prev')}
                     onNext={() => handleSkip('next')}
                     currentTrack={currentTrack}
@@ -549,6 +603,7 @@ const App: React.FC = () => {
             equippedItems={equippedItems}
             onToggleEquip={handleToggleEquip}
             history={workoutHistory}
+            onUpdateSession={handleUpdateSession}
         />
 
         <WorkoutSummary 

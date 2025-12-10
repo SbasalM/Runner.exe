@@ -62,4 +62,9 @@ export interface WorkoutSession {
   distance?: string;
   calories: number;
   avgPace?: string;
+  
+  // User Editable Fields
+  title?: string;
+  weight?: string;
+  reps?: string;
 }
