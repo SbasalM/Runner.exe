@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, ReactNode, Component } from 'react';
+import React, { useRef, useMemo, ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere } from '@react-three/drei';
 import * as THREE from 'three';
@@ -28,11 +28,8 @@ interface ErrorBoundaryState {
 }
 
 // Error Boundary to catch 3D Loading Errors (e.g., fetch failed)
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(_: any): ErrorBoundaryState {
     return { hasError: true };

@@ -1,3 +1,4 @@
+
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { AppMode, InputSource } from '../types';
 import { MODE_CONFIG } from '../constants';
@@ -218,10 +219,11 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({
          </div>
 
          {/* TEXT LAYER - MARQUEE */}
+         {/* Increased width to 160% to ensure text fades out well before the edge (fix for "pop through" effect) */}
          <div 
            className={`
              absolute flex items-end justify-center z-10 
-             w-[120%] h-full left-1/2 -translate-x-1/2 
+             w-[160%] h-full left-1/2 -translate-x-1/2 
              pb-3 overflow-hidden
              transition-opacity duration-500 pointer-events-none
              ${config.color}

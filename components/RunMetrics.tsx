@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface RunMetricsProps {
@@ -30,8 +31,14 @@ export const RunMetrics: React.FC<RunMetricsProps> = ({ distance, distanceUnit, 
       <div className="flex items-end justify-between border-b border-gray-800 pb-2">
          <span className="text-gray-500 text-sm font-bold tracking-widest uppercase mb-4 md:mb-6">Distance</span>
          <div className="text-right">
-             <span className="text-[13vw] md:text-[7rem] font-black text-white brand-font tracking-tighter leading-none block">{distance}</span>
-             <span className="text-xl md:text-3xl text-gray-400 font-bold block -mt-2">{distanceUnit}</span>
+             {/* 
+                 Responsive Text Sizing:
+                 - Base (Mobile): text-[18vw] -> Fits 375px width without overlapping other elements
+                 - SM (Tablet+): text-[25vw] -> Original large impact
+                 - MD (Desktop): text-[7rem] -> Fixed max size
+             */}
+             <span className="text-[18vw] sm:text-[25vw] md:text-[7rem] font-black text-white brand-font tracking-tighter leading-none block">{distance}</span>
+             <span className="text-2xl md:text-3xl text-gray-400 font-bold block -mt-2">{distanceUnit}</span>
          </div>
       </div>
 
@@ -40,7 +47,7 @@ export const RunMetrics: React.FC<RunMetricsProps> = ({ distance, distanceUnit, 
         <div className="flex flex-col">
           <span className="text-gray-500 text-xs font-bold tracking-widest uppercase mb-1">Pace</span>
           <div className="flex items-baseline">
-             <span className="text-3xl md:text-5xl font-bold text-cyan-400 brand-font tracking-tight">{pace}</span>
+             <span className="text-2xl sm:text-3xl md:text-5xl font-bold text-cyan-400 brand-font tracking-tight">{pace}</span>
              <span className="text-sm text-gray-500 ml-1">{paceUnit}</span>
           </div>
         </div>
@@ -48,7 +55,7 @@ export const RunMetrics: React.FC<RunMetricsProps> = ({ distance, distanceUnit, 
         <div className="flex flex-col text-right">
           <span className="text-gray-500 text-xs font-bold tracking-widest uppercase mb-1">Burn</span>
           <div className="flex items-baseline justify-end">
-             <span className="text-3xl md:text-5xl font-bold text-amber-500 brand-font tracking-tight">{calories}</span>
+             <span className="text-2xl sm:text-3xl md:text-5xl font-bold text-amber-500 brand-font tracking-tight">{calories}</span>
              <span className="text-sm text-gray-500 ml-1">KCAL</span>
           </div>
         </div>

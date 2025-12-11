@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource, WorkoutSession } from './types';
 import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG, SKULL_MODEL_URL, DEMO_PLAYLIST } from './constants';
@@ -70,6 +71,11 @@ const App: React.FC = () => {
   // Idle Mode State
   const [isIdle, setIsIdle] = useState(false);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hold Button State
+  const [holdProgress, setHoldProgress] = useState(0);
+  const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isStopTriggeredRef = useRef(false);
 
   const resetIdleTimer = () => {
     setIsIdle(false);
@@ -248,6 +254,17 @@ const App: React.FC = () => {
     });
   };
 
+  // Wrapper for Debug Panel to unequip item if it gets locked
+  const handleJudgeToggleUnlock = (item: string) => {
+    const isUnlocked = unlockedItems.includes(item);
+    toggleUnlock(item);
+    
+    if (isUnlocked) {
+      // We are locking it (removing from available). Ensure it's unequipped.
+      setEquippedItems(prev => prev.filter(i => i !== item));
+    }
+  };
+
   const handleSkip = (direction: 'next' | 'prev', forcePlay = false) => {
     if (!currentTrack) return;
     
@@ -372,6 +389,49 @@ const App: React.FC = () => {
       handleFinishWorkout();
   };
 
+  // --- Hold-to-Stop Logic ---
+  const startHold = (e: React.SyntheticEvent) => {
+      // e.preventDefault(); // Optional: prevent touch scrolling if needed, but passive is usually better
+      if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+      setHoldProgress(0);
+      isStopTriggeredRef.current = false;
+
+      const startTime = Date.now();
+      const duration = 1500; // 1.5s to trigger stop
+
+      holdTimerRef.current = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min((elapsed / duration) * 100, 100);
+          setHoldProgress(progress);
+
+          if (progress >= 100) {
+              if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+              isStopTriggeredRef.current = true;
+              handleStopWorkout();
+              triggerToast("Session Ended via Hold");
+              setHoldProgress(0);
+          }
+      }, 16);
+  };
+
+  const endHold = () => {
+      if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+      
+      if (!isStopTriggeredRef.current) {
+          // If we released BEFORE 100%, treat it as a normal click (Activate Cooldown)
+          setIsCooldown(true);
+      }
+      
+      setHoldProgress(0);
+      isStopTriggeredRef.current = false;
+  };
+
+  const cancelHold = () => {
+      if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+      setHoldProgress(0);
+      isStopTriggeredRef.current = false;
+  };
+
   return (
     <div className="h-[100dvh] w-full bg-[#050505] flex items-center justify-center p-0 md:p-8 font-mono overflow-hidden relative">
       
@@ -399,16 +459,16 @@ const App: React.FC = () => {
         onFileSelect={handleFileSelect}
         onAvatarSelect={handleAvatarSelect}
         unlockedItems={unlockedItems}
-        toggleUnlock={toggleUnlock}
+        toggleUnlock={handleJudgeToggleUnlock}
       />
 
-      {/* Explicit Floating Judge Button */}
+      {/* Judge Controls Button (Renamed from DEBUG) */}
       {settings.inputSource === InputSource.HEART_RATE && hasStarted && (
         <button 
             onClick={() => setShowDebugPanel(!showDebugPanel)}
-            className="fixed top-20 right-4 z-[60] bg-black border border-cyan-400 text-cyan-400 px-3 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest hover:bg-cyan-400 hover:text-black transition-all shadow-[0_0_10px_rgba(34,211,238,0.4)] opacity-50 hover:opacity-100"
+            className="fixed top-20 right-4 z-[60] bg-black border border-cyan-400 text-cyan-400 px-3 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest hover:bg-cyan-400 hover:text-black transition-all shadow-[0_0_10px_rgba(34,211,238,0.4)] opacity-50 hover:opacity-100 flex items-center gap-1"
         >
-            🛠️ DEBUG
+            <span className="text-sm">⚖️</span> JUDGE CONTROLS
         </button>
       )}
 
@@ -529,13 +589,38 @@ const App: React.FC = () => {
                 {/* Dynamic Switch: Activate vs Resume/Stop */}
                 {!isCooldown ? (
                     <button
-                        onClick={() => setIsCooldown(true)}
-                        className="w-full py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-cyan-950/30 text-cyan-500 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:bg-cyan-500 hover:text-black hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+                        onMouseDown={startHold}
+                        onMouseUp={endHold}
+                        onMouseLeave={cancelHold}
+                        onTouchStart={startHold}
+                        onTouchEnd={endHold}
+                        onContextMenu={(e) => e.preventDefault()}
+                        className="w-full py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-cyan-950/30 text-cyan-500 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:bg-cyan-500 hover:text-black hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] relative overflow-hidden select-none"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        ACTIVATE COOLDOWN
+                        {/* Progress Fill for Hold-to-Stop */}
+                        <div 
+                            className="absolute inset-0 bg-red-600 z-0 transition-all duration-75 ease-linear opacity-50"
+                            style={{ width: `${holdProgress}%` }}
+                        ></div>
+
+                        {/* Button Content */}
+                        <div className="relative z-10 flex items-center gap-2">
+                            {holdProgress > 0 ? (
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 animate-pulse" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
+                                    </svg>
+                                    <span>HOLD TO STOP</span>
+                                </>
+                            ) : (
+                                <>
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                    ACTIVATE COOLDOWN
+                                </>
+                            )}
+                        </div>
                     </button>
                 ) : (
                     <div 

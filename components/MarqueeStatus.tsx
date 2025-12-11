@@ -48,9 +48,10 @@ export const MarqueeStatus: React.FC<MarqueeStatusProps> = ({ label, mode, isIgn
         .animate-marquee {
           animation: marquee linear infinite;
         }
+        /* Reverted to standard fade: Transparent edges, solid center */
         .mask-linear-fade {
-            mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
-            -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
+            mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
+            -webkit-mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
         }
       `}</style>
     </div>

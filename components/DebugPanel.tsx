@@ -60,7 +60,7 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                          onChange={() => toggleUnlock(item)}
                          className="rounded text-cyan-500 focus:ring-0 bg-gray-900 border-gray-600"
                        />
-                       <span className="text-sm text-gray-300 font-mono capitalize">{item.replace('_', ' ')}</span>
+                       <span className="text-sm text-gray-300 font-mono capitalize">{item === 'jaw' ? 'Jaw Ventilator' : item.replace('_', ' ')}</span>
                    </label>
                ))}
            </div>

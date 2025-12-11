@@ -1,4 +1,5 @@
 
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MODE_CONFIG } from '../constants';
 import { AppMode } from '../types';
@@ -111,7 +112,12 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
       setRealtimeRate(rate);
 
       if (shouldPlay) {
-        audioElementRef.current.play().catch(e => console.error("Play failed", e));
+        audioElementRef.current.play().catch(e => {
+            // Ignore AbortError which happens when switching tracks quickly
+            if (e.name !== 'AbortError') {
+                console.error("Play failed", e);
+            }
+        });
         setIsPlaying(true);
       } else {
         setIsPlaying(false);
@@ -130,7 +136,9 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
 
     if (audioElementRef.current) {
       if (audioElementRef.current.paused) {
-        await audioElementRef.current.play();
+        await audioElementRef.current.play().catch(e => {
+             if (e.name !== 'AbortError') console.error("Play failed", e);
+        });
         setIsPlaying(true);
       } else {
         audioElementRef.current.pause();

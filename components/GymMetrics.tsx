@@ -1,3 +1,4 @@
+
 import React from 'react';
 
 interface GymMetricsProps {
@@ -15,7 +16,13 @@ export const GymMetrics: React.FC<GymMetricsProps> = ({ formattedTime, percentag
       {/* Session Timer */}
       <div className="flex flex-col items-center border-b border-gray-800 pb-2 md:pb-4">
          <span className="text-gray-500 text-xs font-bold tracking-widest uppercase mb-1">Session Duration</span>
-         <span className="text-[16vw] md:text-[8rem] font-black text-white brand-font tracking-tighter tabular-nums leading-none">
+         {/* 
+            Responsive Text Sizing:
+            - Base (Mobile): text-[20vw] -> Prevents overflow on small screens
+            - SM (Tablet+): text-[28vw] -> Large impact
+            - MD (Desktop): text-[8rem] -> Fixed max
+         */}
+         <span className="text-[20vw] sm:text-[28vw] md:text-[8rem] font-black text-white brand-font tracking-tighter tabular-nums leading-none">
             {formattedTime}
          </span>
       </div>

@@ -45,7 +45,7 @@ export const useProgression = (currentSessionDistanceKm: number) => {
     // Level 1: Cyber Jaw at 10.0 Miles
     if (totalMiles >= 10.0 && !newItems.has('jaw')) {
         newItems.add('jaw');
-        unlockedName = 'CYBER JAW';
+        unlockedName = 'JAW VENTILATOR';
         unlocked = true;
     }
 

@@ -31,8 +31,13 @@ export const GhostBPM: React.FC<GhostBPMProps> = ({ value, label, mode, isSpotli
 
   // Adjust font size for longer time strings to prevent wrapping/overflow
   const isTime = typeof displayValue === 'string' && String(displayValue).includes(':');
-  // Boosted font sizes
-  const fontSize = isTime ? 'text-6xl md:text-8xl' : 'text-7xl md:text-8xl';
+  
+  // Responsive font sizes: 
+  // Base (Mobile): text-6xl (smaller to fit 375px width)
+  // SM (Tablet/Desktop): text-8xl (original large impact)
+  const fontSize = isTime 
+    ? 'text-5xl sm:text-7xl md:text-8xl' 
+    : 'text-6xl sm:text-8xl md:text-8xl';
 
   return (
     <div 

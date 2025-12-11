@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { WorkoutSession, WorkoutMode } from '../types';
 
@@ -36,11 +37,20 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ session, onUpdate }) => {
     };
 
     return (
-        <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-3 flex flex-col gap-2">
-            <div className="flex justify-between items-start">
-                <div className="flex-1">
-                    <div className="text-[10px] text-gray-500 font-bold mb-1">
-                        {new Date(session.date).toLocaleDateString()} • {new Date(session.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+        <div className="group relative bg-zinc-900 border border-zinc-800 rounded-lg p-3 hover:border-zinc-700 transition-colors">
+            {/* Side Accent */}
+            <div className={`absolute top-0 bottom-0 left-0 w-1 rounded-l-lg transition-colors ${session.mode === WorkoutMode.RUN ? 'bg-cyan-900 group-hover:bg-cyan-500' : 'bg-fuchsia-900 group-hover:bg-fuchsia-500'}`}></div>
+            
+            <div className="pl-3 flex justify-between items-start">
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[9px] text-gray-500 font-mono uppercase">
+                             {new Date(session.date).toLocaleDateString()}
+                        </span>
+                        <span className="text-[9px] text-zinc-600 font-mono">|</span>
+                        <span className="text-[9px] text-gray-500 font-mono uppercase">
+                             {new Date(session.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </span>
                     </div>
                     
                     {isEditing ? (
@@ -48,57 +58,63 @@ const HistoryItem: React.FC<HistoryItemProps> = ({ session, onUpdate }) => {
                             type="text" 
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className="bg-zinc-900 border border-zinc-600 text-white font-bold brand-font text-sm w-full rounded px-2 py-1 mb-1 focus:outline-none focus:border-cyan-500"
+                            className="bg-black border border-zinc-700 text-white font-bold brand-font text-xs w-full rounded px-2 py-1 mb-1 focus:outline-none focus:border-cyan-500"
                             placeholder="Session Title"
+                            autoFocus
                         />
                     ) : (
-                        <div className="text-sm text-white font-bold brand-font truncate max-w-[150px]">
+                        <div className="text-sm text-white font-bold brand-font truncate max-w-[160px] leading-tight group-hover:text-cyan-100 transition-colors">
                             {title}
                         </div>
                     )}
                     
-                    <div className="text-xs text-cyan-400 font-mono">
-                        {session.mode} • {session.mode === WorkoutMode.RUN ? session.distance : session.duration}
+                    <div className="mt-1 flex items-center gap-2">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${session.mode === WorkoutMode.RUN ? 'bg-cyan-900/30 text-cyan-400' : 'bg-fuchsia-900/30 text-fuchsia-400'}`}>
+                            {session.mode}
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono">
+                             {session.mode === WorkoutMode.RUN ? session.distance : session.duration}
+                        </span>
                     </div>
                 </div>
 
-                <div className="text-right flex flex-col items-end">
-                    <div className="text-amber-500 font-bold text-sm mb-2">{session.calories} KCAL</div>
+                <div className="text-right flex flex-col items-end pl-2">
+                    <div className="text-amber-500 font-bold text-sm brand-font mb-2">{session.calories} <span className="text-[9px] text-amber-700">KC</span></div>
                     <button 
                         onClick={() => isEditing ? handleSave() : setIsEditing(true)}
-                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border transition-colors ${isEditing ? 'bg-green-500/20 text-green-400 border-green-500 hover:bg-green-500/30' : 'bg-zinc-700 text-zinc-400 border-zinc-600 hover:text-white'}`}
+                        className={`text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded border transition-colors ${isEditing ? 'bg-green-900/20 text-green-400 border-green-500/50' : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:text-white hover:border-zinc-500'}`}
                     >
                         {isEditing ? 'SAVE' : 'EDIT'}
                     </button>
                 </div>
             </div>
 
-            {/* Expanded details for GYM or if editing */}
+            {/* Gym Details / Editing Expansion */}
             {(session.mode === WorkoutMode.GYM || isEditing || session.weight || session.reps) && (
-                <div className="mt-2 pt-2 border-t border-zinc-700/50 grid grid-cols-2 gap-2">
+                <div className="mt-3 pt-2 border-t border-zinc-800/50 grid grid-cols-2 gap-3 pl-3">
                     <div>
-                        <span className="text-[9px] text-gray-500 uppercase font-bold block">Weight</span>
+                        <span className="text-[9px] text-zinc-600 uppercase font-bold block mb-0.5">Weight (LBS)</span>
                         {isEditing ? (
                             <input 
                                 type="text"
                                 value={weight}
                                 onChange={(e) => setWeight(e.target.value)}
-                                className="w-full bg-zinc-900 text-xs text-white p-1 rounded border border-zinc-600"
-                                placeholder="e.g. 150 lbs"
+                                className="w-full bg-black text-xs text-white p-1 rounded border border-zinc-700 font-mono"
+                                placeholder="--"
                             />
                         ) : (
                             <span className="text-xs text-gray-300 font-mono">{weight || '-'}</span>
                         )}
                     </div>
                     <div>
-                        <span className="text-[9px] text-gray-500 uppercase font-bold block">Reps / Sets</span>
+                        <span className="text-[9px] text-zinc-600 uppercase font-bold block mb-0.5">Sets / Reps</span>
                         {isEditing ? (
                             <input 
                                 type="text"
                                 value={reps}
                                 onChange={(e) => setReps(e.target.value)}
-                                className="w-full bg-zinc-900 text-xs text-white p-1 rounded border border-zinc-600"
-                                placeholder="e.g. 3 x 12"
+                                className="w-full bg-black text-xs text-white p-1 rounded border border-zinc-700 font-mono"
+                                placeholder="--"
                             />
                         ) : (
                             <span className="text-xs text-gray-300 font-mono">{reps || '-'}</span>
@@ -127,123 +143,167 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const items = [
     { id: 'jaw', name: 'Cyber Jaw', req: '10.0 Miles' },
-    { id: 'neural_halo', name: 'Neural Halo', req: '20.0 Miles' }
+    { id: 'neural_halo', name: 'Neural Halo', req: '20.0 Miles' },
+    { id: 'cyber_visor', name: 'Cyber Visor', req: '30.0 Miles' }
   ];
+
+  // Calculate Rank based on distance (Basic logic)
+  const getRank = (dist: number) => {
+      if (dist < 10) return { title: 'NEOPHYTE', color: 'text-gray-400' };
+      if (dist < 30) return { title: 'RUNNER', color: 'text-cyan-400' };
+      if (dist < 100) return { title: 'OPERATIVE', color: 'text-fuchsia-400' };
+      return { title: 'CYBER LEGEND', color: 'text-amber-400' };
+  };
+  
+  const rank = getRank(lifetimeDistance);
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-fade-in-up">
-      <div className="w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-6 shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-sm bg-zinc-950 border border-zinc-800 rounded-xl p-0 shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]">
         
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6 border-b border-zinc-800 pb-4 shrink-0">
-          <div className="flex items-center gap-3">
-             <div className="w-10 h-10 rounded-full bg-cyan-900 border border-cyan-500 flex items-center justify-center text-cyan-400">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                </svg>
+        {/* TOP ID CARD SECTION */}
+        <div className="p-6 pb-0 relative shrink-0">
+             {/* Background Pattern */}
+             <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none"></div>
+             
+             <div className="flex justify-between items-start mb-4 relative z-10">
+                <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-lg bg-zinc-900 border border-cyan-500/30 flex items-center justify-center text-cyan-500 shadow-[0_0_20px_rgba(6,182,212,0.1)] relative overflow-hidden group">
+                         {/* Scanline */}
+                         <div className="absolute top-0 left-0 w-full h-[2px] bg-cyan-400/50 animate-[scan_3s_linear_infinite]"></div>
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 20 20" fill="currentColor">
+                             <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                         </svg>
+                    </div>
+                    <div>
+                        <div className="text-[10px] text-zinc-500 font-mono tracking-widest mb-1">UNIT_ID: CP-01</div>
+                        <h2 className="text-white font-black brand-font tracking-wider text-2xl leading-none">PILOT</h2>
+                        <div className={`text-xs font-bold font-mono mt-1 ${rank.color}`}>{rank.title}</div>
+                    </div>
+                </div>
+                
+                <button onClick={onClose} className="text-zinc-600 hover:text-white transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
              </div>
-             <div>
-                <h2 className="text-white font-bold brand-font tracking-wider text-xl leading-none">PILOT PROFILE</h2>
-                <span className="text-xs text-zinc-500 font-mono">ID: RUNNER-01</span>
-             </div>
-          </div>
-          
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
 
-        {/* Tab Switcher */}
-        <div className="flex bg-zinc-800 p-1 rounded-lg mb-6 shrink-0">
-            <button 
-                onClick={() => setActiveTab('profile')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'profile' ? 'bg-cyan-500 text-black shadow' : 'text-gray-500 hover:text-white'}`}
-            >
-                STATS & GEAR
-            </button>
-            <button 
-                onClick={() => setActiveTab('history')}
-                className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'history' ? 'bg-cyan-500 text-black shadow' : 'text-gray-500 hover:text-white'}`}
-            >
-                HISTORY
-            </button>
+             {/* STATS STRIP */}
+             <div className="grid grid-cols-2 gap-4 relative z-10 mb-6">
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded p-2">
+                    <div className="text-[9px] text-zinc-500 uppercase font-bold">LIFETIME DIST</div>
+                    <div className="text-xl font-mono font-bold text-white">{lifetimeDistance.toFixed(1)} <span className="text-[10px] text-zinc-600">MI</span></div>
+                </div>
+                <div className="bg-zinc-900/50 border border-zinc-800 rounded p-2">
+                     <div className="text-[9px] text-zinc-500 uppercase font-bold">SESSIONS</div>
+                     <div className="text-xl font-mono font-bold text-white">{history.length} <span className="text-[10px] text-zinc-600">LOGS</span></div>
+                </div>
+             </div>
+
+             {/* TABS */}
+             <div className="flex border-b border-zinc-800 relative z-10">
+                <button 
+                    onClick={() => setActiveTab('profile')}
+                    className={`flex-1 pb-3 text-[10px] font-bold uppercase tracking-widest transition-all relative ${activeTab === 'profile' ? 'text-cyan-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                    Gear & Upgrades
+                    {/* Neon Underline */}
+                    <div className={`absolute bottom-0 left-0 w-full h-[2px] bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.8)] transition-transform duration-300 ${activeTab === 'profile' ? 'scale-x-100' : 'scale-x-0'}`}></div>
+                </button>
+                <button 
+                    onClick={() => setActiveTab('history')}
+                    className={`flex-1 pb-3 text-[10px] font-bold uppercase tracking-widest transition-all relative ${activeTab === 'history' ? 'text-cyan-400' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                    Mission Logs
+                    <div className={`absolute bottom-0 left-0 w-full h-[2px] bg-cyan-500 shadow-[0_0_10px_rgba(34,211,238,0.8)] transition-transform duration-300 ${activeTab === 'history' ? 'scale-x-100' : 'scale-x-0'}`}></div>
+                </button>
+             </div>
         </div>
 
         {/* SCROLLABLE CONTENT AREA */}
-        <div className="overflow-y-auto flex-1 pr-2">
+        <div className="overflow-y-auto flex-1 p-6 custom-scrollbar bg-zinc-950/50">
             
             {activeTab === 'profile' ? (
-                <>
-                    {/* Lifetime Stats */}
-                    <div className="grid grid-cols-2 gap-4 mb-8">
-                        <div className="bg-zinc-800/50 p-3 rounded-lg border border-zinc-700">
-                            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1">Total Dist</div>
-                            <div className="text-2xl font-black text-white brand-font">{lifetimeDistance.toFixed(1)} <span className="text-xs text-gray-500 font-sans">MI</span></div>
-                        </div>
-                        <div className="bg-zinc-800/50 p-3 rounded-lg border border-zinc-700">
-                            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-1">Rank</div>
-                            <div className="text-lg font-bold text-cyan-400 brand-font truncate">NEOPHYTE</div>
-                        </div>
+                <div>
+                    <div className="flex items-center justify-between mb-4">
+                        <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Available Upgrades</span>
+                        <span className="text-[10px] text-cyan-900 bg-cyan-900/10 px-2 py-0.5 rounded border border-cyan-900/30">{unlockedItems.length} / {items.length}</span>
                     </div>
+                    
+                    <div className="space-y-3">
+                        {items.map(item => {
+                            const isUnlocked = unlockedItems.includes(item.id);
+                            const isEquipped = equippedItems.includes(item.id);
+                            
+                            return (
+                                <div 
+                                    key={item.id} 
+                                    className={`relative p-3 rounded border transition-all duration-300 flex items-center justify-between group overflow-hidden ${
+                                        isUnlocked 
+                                        ? 'bg-zinc-900 border-zinc-700 hover:border-cyan-500/50' 
+                                        : 'bg-zinc-950 border-zinc-800 opacity-60'
+                                    }`}
+                                >
+                                    {/* Active Glow BG for Equipped */}
+                                    {isEquipped && (
+                                        <div className="absolute inset-0 bg-cyan-500/5 pointer-events-none"></div>
+                                    )}
 
-                    {/* Inventory / Unlocks */}
-                    <div>
-                        <div className="text-xs text-gray-400 uppercase tracking-widest font-bold mb-4 flex justify-between items-center">
-                            <span>Augmentations</span>
-                            <span className="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-gray-500">{unlockedItems.length} / {items.length}</span>
-                        </div>
-                        
-                        <div className="space-y-3">
-                            {items.map(item => {
-                                const isUnlocked = unlockedItems.includes(item.id);
-                                const isEquipped = equippedItems.includes(item.id);
-                                
-                                return (
-                                    <div 
-                                        key={item.id} 
-                                        className={`relative p-4 rounded-xl border flex items-center justify-between transition-all ${
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        {/* Status Icon */}
+                                        <div className={`w-8 h-8 rounded flex items-center justify-center border ${
                                             isUnlocked 
-                                            ? 'bg-cyan-900/10 border-cyan-500/30' 
-                                            : 'bg-zinc-800/50 border-zinc-700 opacity-60 grayscale'
-                                        }`}
-                                    >
+                                            ? (isEquipped ? 'bg-cyan-500 text-black border-cyan-500' : 'bg-zinc-800 text-cyan-500 border-zinc-700')
+                                            : 'bg-zinc-900 text-zinc-700 border-zinc-800'
+                                        }`}>
+                                            {isUnlocked ? (
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                                                </svg>
+                                            ) : (
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                    <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                                </svg>
+                                            )}
+                                        </div>
+
                                         <div className="flex flex-col">
-                                            <span className={`font-bold brand-font tracking-wide ${isUnlocked ? 'text-cyan-100' : 'text-gray-500'}`}>
+                                            <span className={`font-bold brand-font text-sm tracking-wide ${isUnlocked ? 'text-white' : 'text-zinc-600'}`}>
                                                 {item.name}
                                             </span>
-                                            <span className="text-[10px] text-gray-500 font-mono mt-1">Unlock: {item.req}</span>
+                                            <span className="text-[9px] text-zinc-500 font-mono">
+                                                {isUnlocked ? 'AUGMENTATION READY' : `REQ: ${item.req}`}
+                                            </span>
                                         </div>
-                                        
-                                        {isUnlocked ? (
-                                            <button 
-                                                onClick={() => onToggleEquip(item.id)}
-                                                className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all border ${
-                                                    isEquipped 
-                                                    ? 'bg-green-500/20 text-green-400 border-green-500 hover:bg-green-500/30' 
-                                                    : 'bg-cyan-500/20 text-cyan-400 border-cyan-500 hover:bg-cyan-500/30'
-                                                }`}
-                                            >
-                                                {isEquipped ? 'EQUIPPED' : 'EQUIP'}
-                                            </button>
-                                        ) : (
-                                            <div className="px-2 py-1 rounded bg-zinc-800 text-zinc-500 text-[10px] font-bold uppercase tracking-wider border border-zinc-700">
-                                                LOCKED
-                                            </div>
-                                        )}
                                     </div>
-                                )
-                            })}
-                        </div>
+                                    
+                                    {isUnlocked && (
+                                        <button 
+                                            onClick={() => onToggleEquip(item.id)}
+                                            className={`relative z-10 px-3 py-1.5 rounded text-[9px] font-bold uppercase tracking-wider transition-all border ${
+                                                isEquipped 
+                                                ? 'bg-cyan-900/20 text-cyan-400 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.2)]' 
+                                                : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-white hover:border-zinc-500'
+                                            }`}
+                                        >
+                                            {isEquipped ? 'ACTIVE' : 'EQUIP'}
+                                        </button>
+                                    )}
+                                </div>
+                            )
+                        })}
                     </div>
-                </>
+                </div>
             ) : (
                 /* HISTORY TAB */
-                <div className="space-y-3">
+                <div className="space-y-3 pb-4">
                     {history.length === 0 ? (
-                         <div className="text-center py-10 text-gray-500 text-xs font-mono">
-                             NO WORKOUT DATA FOUND.
+                         <div className="flex flex-col items-center justify-center py-12 text-zinc-600 space-y-2 opacity-50">
+                             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                             </svg>
+                             <span className="text-xs font-mono">NO LOGS FOUND</span>
                          </div>
                     ) : (
                         history.map(session => (

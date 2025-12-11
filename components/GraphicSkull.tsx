@@ -1,3 +1,5 @@
+
+
 import React, { useMemo, useEffect, useRef } from 'react';
 import { useGLTF, Center } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
@@ -22,10 +24,11 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
   // Clone scene to avoid mutating the cached GLTF if it's reused elsewhere
   const clone = useMemo(() => scene.clone(), [scene]);
   
-  // Refs for specific parts to animate
-  const eyesRef = useRef<THREE.Mesh[]>([]);
-  const jawRef = useRef<THREE.Mesh | null>(null);
-  const haloRef = useRef<THREE.Mesh | null>(null);
+  // Refs for specific parts to animate (Array based for multi-mesh support)
+  const eyesRefs = useRef<THREE.Mesh[]>([]);
+  // Use generic arrays to capture ALL parts of a feature (e.g. if Jaw is split into 2 meshes)
+  const jawVRefs = useRef<THREE.Mesh[]>([]);    // Unlockable Jaw V (Ventilation)
+  const halosRefs = useRef<THREE.Mesh[]>([]);   // Inner/Outer halos
   
   // Flash Animation Ref (0.0 to 1.0) for eyes
   const flashLevel = useRef(0.0);
@@ -73,21 +76,21 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
     side: THREE.DoubleSide
   }), []);
 
-  // 3. NOSE MATERIAL (Blackout)
+  // 3. NOSE/BLOCKER MATERIAL (Pure Black Void)
   const noseMaterial = useMemo(() => new THREE.MeshBasicMaterial({
-    color: new THREE.Color('#000000'),
-    side: THREE.DoubleSide
+    color: new THREE.Color(0x000000),
+    side: THREE.DoubleSide,
+    toneMapped: false,
+    depthWrite: true // Important: must write to depth buffer to occlude objects behind it
   }), []);
 
-  // 4. HALO MATERIAL (Holographic/Glowing)
-  const haloMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+  // 4. HALO MATERIAL (Unlit MeshBasic for pure Neon)
+  const haloMaterial = useMemo(() => new THREE.MeshBasicMaterial({
     color: new THREE.Color('#00FFFF'), // Cyan Base
-    emissive: new THREE.Color('#00FFFF'),
-    emissiveIntensity: 2.0,
+    side: THREE.DoubleSide,
+    toneMapped: false, // Critical for "Glow" look
     transparent: true,
-    opacity: 0.8,
-    metalness: 0.5,
-    roughness: 0.1
+    opacity: 0.9,
   }), []);
 
   // Update light direction uniform
@@ -99,43 +102,91 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
 
   // --- TRAVERSAL & SETUP ---
   useEffect(() => {
-    eyesRef.current = [];
-    jawRef.current = null;
-    haloRef.current = null;
+    eyesRefs.current = [];
+    jawVRefs.current = [];
+    halosRefs.current = [];
 
-    console.log("--- TRAVERSING MODEL ---");
+    console.log("--- TRAVERSING MODEL v5 ---");
     
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
-        const name = mesh.name.toLowerCase();
         
-        // NOSE -> Blackout
-        if (name.includes("nose")) {
-            mesh.material = noseMaterial;
+        // Smart Identification: Check ancestry for group names
+        // This ensures parts named "Mesh_01" inside a "Jaw_V" group are correctly identified
+        let type = 'DEFAULT';
+        let subType = 'outer'; // Default halo subtype
+        let curr: THREE.Object3D | null = mesh;
+        
+        // Traverse up the tree to find meaningful group names
+        while (curr && curr !== scene) {
+            const n = curr.name.toLowerCase();
+            
+            // 1. Unlockable Jaw (Jaw_V)
+            // Priority: Check this before generic identifiers
+            if (n.includes("jaw_v") || n.includes("ventilator")) {
+                type = 'JAW_V';
+                break;
+            }
+
+            // 2. Halos
+            if (n.includes("halo")) {
+                type = 'HALO';
+                if (n.includes("inner")) {
+                    subType = 'inner';
+                } else {
+                    subType = 'outer'; // Default to outer
+                }
+                break;
+            }
+            
+            // 3. Nose / Blocker (Blackout Mesh)
+            if (n.includes("nose") || n.includes("socket") || n.includes("block") || n.includes("void") || n.includes("occlude")) {
+                type = 'NOSE';
+                break;
+            }
+
+            // 4. Eyes
+            if (n.includes("eye")) {
+                type = 'EYE';
+                break;
+            }
+            
+            curr = curr.parent;
         }
-        // JAW -> Neon Shader (Match Skull)
-        else if (name.includes("jaw")) {
-            mesh.material = neonMaterial;
-            jawRef.current = mesh;
-        }
-        // NEURAL HALO -> Glowing
-        else if (name.includes("neural") || name.includes("halo")) {
-            mesh.material = haloMaterial;
-            haloRef.current = mesh;
-        }
-        // EYES -> Dynamic Color
-        else if (name.includes("eye")) {
-            mesh.material = eyeMaterial;
-            eyesRef.current.push(mesh);
-        }
-        // DEFAULT SKULL -> Neon Shader
-        else {
-            mesh.material = neonMaterial;
+
+        // Apply Logic based on Identified Type
+        switch (type) {
+            case 'JAW_V':
+                mesh.material = neonMaterial;
+                mesh.visible = false; // Start hidden, controlled by useFrame logic
+                jawVRefs.current.push(mesh);
+                break;
+
+            case 'HALO':
+                mesh.material = haloMaterial;
+                mesh.rotation.set(0, 0, 0); // Reset base rotation
+                mesh.userData.haloType = subType; // Store type for animation loop
+                halosRefs.current.push(mesh);
+                break;
+            
+            case 'EYE':
+                mesh.material = eyeMaterial;
+                eyesRefs.current.push(mesh);
+                break;
+            
+            case 'NOSE':
+                mesh.material = noseMaterial;
+                break;
+
+            default:
+                // Default Skull parts (Cranium, etc.)
+                mesh.material = neonMaterial;
+                break;
         }
       }
     });
-  }, [clone, neonMaterial, eyeMaterial, noseMaterial, haloMaterial]);
+  }, [clone, neonMaterial, eyeMaterial, noseMaterial, haloMaterial, scene]);
 
   // Pre-define Colors
   const colorGray = useMemo(() => new THREE.Color('#888888'), []);
@@ -152,24 +203,26 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
   useFrame((state, delta) => {
     const t = state.clock.elapsedTime;
     
-    // 1. VISIBILITY MANAGEMENT (Based on Equipped)
-    if (jawRef.current) {
-        jawRef.current.visible = equippedItems.includes('jaw');
-    }
-    if (haloRef.current) {
-        haloRef.current.visible = equippedItems.includes('neural_halo');
-    }
+    // 1. VISIBILITY & EQUIPMENT LOGIC
+    const isJawEquipped = equippedItems.includes('jaw'); // Matches ID 'jaw' in useProgression
+    const isHaloEquipped = equippedItems.includes('neural_halo');
+
+    // FORCE VISIBILITY UPDATE EVERY FRAME
+    // Ensure "Jaw_V" is ONLY visible when equipped.
+    jawVRefs.current.forEach(mesh => {
+        mesh.visible = isJawEquipped;
+    });
+    
+    // Manage Halos Visibility
+    halosRefs.current.forEach(mesh => {
+        mesh.visible = isHaloEquipped;
+    });
 
     // 2. FLASH DECAY
     flashLevel.current = THREE.MathUtils.damp(flashLevel.current, 0, 8, delta);
 
     // 3. COLOR & INTENSITY LOGIC (Skull & Jaw)
     let targetIntensity = 1.0;
-    
-    // Determine Current Phase for Transitions
-    // 0: Standby/Low (< Target Min)
-    // 1: Zone (Min - Max)
-    // 2: Overdrive (> Max)
     let currentPhase = 0;
 
     if (isStandby) {
@@ -202,41 +255,59 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
     }
 
     // Apply to Skull (Neon Shader)
-    // Skull transitions smoothly, NO FLASH
     const smoothFactor = Math.min(1.0, delta * 2.0);
     neonMaterial.uniforms.uColor.value.lerp(targetColor, smoothFactor);
     neonMaterial.uniforms.uIntensity.value = THREE.MathUtils.lerp(neonMaterial.uniforms.uIntensity.value, targetIntensity, smoothFactor);
 
-    // 4. JAW ANIMATION 
-    if (jawRef.current && equippedItems.includes('jaw')) {
-        let targetRot = 0;
-        // Only open slightly on Cooldown
-        if (mode === AppMode.COOLDOWN) {
-            targetRot = 0.25; 
-        }
-        jawRef.current.rotation.x = THREE.MathUtils.lerp(jawRef.current.rotation.x, targetRot, 0.1);
+    // 4. JAW ANIMATION
+    let targetRot = 0;
+    // Only open slightly on Cooldown
+    if (mode === AppMode.COOLDOWN) {
+        targetRot = 0.25; 
     }
 
-    // 5. HALO ANIMATION (Pulse Only, No Rotation)
-    if (haloRef.current && equippedItems.includes('neural_halo')) {
-        const pulse = 1.5 + Math.sin(t * 3.0) * 0.5;
-        haloMaterial.emissiveIntensity = pulse;
-        // Ensure no accidental rotation is accumulated
-        haloRef.current.rotation.set(Math.PI / 2, 0, 0); 
+    // Animate V Jaws
+    jawVRefs.current.forEach(mesh => {
+        if (mesh.visible) {
+             mesh.rotation.x = THREE.MathUtils.lerp(mesh.rotation.x, targetRot, 0.1);
+        }
+    });
+
+    // 5. HALO ANIMATION (Flat Spin)
+    if (halosRefs.current.length > 0 && isHaloEquipped) {
+        
+        let rotSpeed = 0.5; // Base
+        if (isStandby || currentPhase === 0) rotSpeed = 0.2; // Idle
+        else if (currentPhase === 1) rotSpeed = 1.0; // Zone
+        else if (currentPhase === 2) rotSpeed = 4.0; // Overdrive
+
+        halosRefs.current.forEach((halo) => {
+            const hType = halo.userData.haloType;
+            
+            // Lock X and Y to 0 each frame to prevent drift/wobble from accumulated math errors
+            halo.rotation.x = 0;
+            halo.rotation.y = 0;
+
+            // Inner -> Clockwise (+)
+            if (hType === 'inner') {
+                halo.rotation.z += delta * rotSpeed;
+            }
+            // Outer -> Counter-Clockwise (-)
+            else {
+                halo.rotation.z -= delta * rotSpeed * 0.8;
+            }
+        });
+
+        // Pulse Emission Color
+        const pulse = 0.5 + Math.sin(t * (rotSpeed * 2.0)) * 0.5;
+        haloMaterial.color.copy(targetColor).lerp(colorWhite, pulse * 0.5); 
     }
 
     // 6. EYE LOGIC (Black -> Red -> White)
-    
-    // TRANSITION DETECTION FOR FLASH
-    // Trigger Flash on:
-    // a) Ignition (Phase 0 -> 1)
-    // b) Overdrive (Phase 1 -> 2)
     if (!isStandby) {
         if (prevPhaseRef.current < 1 && currentPhase >= 1) {
-            // Ignition Flash
             flashLevel.current = 1.0;
         } else if (prevPhaseRef.current < 2 && currentPhase >= 2) {
-            // Overdrive Flash
             flashLevel.current = 1.0;
         }
     }
@@ -245,24 +316,17 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
     let currentEyeColor = colorBlack.clone();
 
     if (isStandby) {
-        // Initial / Standby: Always Black
         currentEyeColor.copy(colorBlack);
     } else if (bpm < targetMin) {
-        // Phase 1: Black
         currentEyeColor.copy(colorBlack);
     } else if (bpm <= targetMax) {
-        // Phase 2: Red
-        // BOOSTED SCALAR to 10.0 to ensure emission is visible against dark skull
         currentEyeColor.copy(colorRed).multiplyScalar(10.0);
     } else {
-        // Phase 3: White
         currentEyeColor.copy(colorWhite);
-        // Slight flicker for intensity
         const flicker = 0.9 + Math.random() * 0.1;
         currentEyeColor.multiplyScalar(flicker);
     }
 
-    // Apply Flash (Ignition/Transition Burst)
     if (flashLevel.current > 0.01) {
         currentEyeColor.lerp(colorWhite, flashLevel.current);
         const flashBoost = 1.0 + (flashLevel.current * 10.0);
@@ -281,5 +345,5 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({ lightDir, bpm, mode,
   );
 };
 
-// Preload the v2 model
+// Preload the v5 model
 useGLTF.preload(SKULL_MODEL_URL);
