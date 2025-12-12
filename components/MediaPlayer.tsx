@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+
+import React from 'react';
 import { SongMetadata } from '../types';
-import { DEMO_TRACKS } from '../constants';
 
 interface MediaPlayerProps {
   isPlaying: boolean;
@@ -9,16 +9,11 @@ interface MediaPlayerProps {
   onNext: () => void;
   currentTrack: SongMetadata | null;
   onTrackSelect: (track: SongMetadata) => void;
-  enabledServices: string[];
-}
-
-// Reusable Source Icon Component
-const SourceIcon = ({ id, className }: { id: string, className?: string }) => {
-  if (id === 'spotify') return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>;
-  if (id === 'apple') return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg>;
-  if (id === 'youtube') return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 14.5c-2.49 0-4.5-2.01-4.5-4.5S9.51 7.5 12 7.5s4.5 2.01 4.5 4.5-2.01 4.5-4.5 4.5zm0-5.5c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/><polygon points="10,15 15,12 10,9"/></svg>;
-  if (id === 'amazon') return <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M13.596 11.583c-1.554-1.306-3.793-1.46-5.877-.69l-.658-2.261c1.921-.77 4.706-.576 6.549.972l.006.005c.877.727 1.488 1.956 1.455 3.568h2.365c.094-2.735-1.127-4.885-2.716-6.202l-1.124-3.874-2.311.67 1.056 3.654c-2.246-1.688-5.698-1.849-8.086-.889l.86 2.949c1.65-.589 3.424-.492 4.654.542.493.414.735 1.037.756 1.834H8.448c-3.134.094-4.832 2.228-4.708 4.755.088 1.782 1.355 3.237 3.326 3.313 1.98.077 3.398-1.042 4.103-2.128l-.058 1.996h2.248l.142-6.529c-.066-1.044-.572-1.741-1.46-2.479l1.555.794zm-2.793 4.887c-.504.808-1.42 1.439-2.52 1.396-1.114-.043-1.666-.826-1.716-1.848-.069-1.408 1.01-2.41 2.508-2.455h1.993l-.265 2.907z"/></svg>;
-  return null;
+  onOpenLibrary: () => void;
+  shuffle: boolean;
+  onToggleShuffle: () => void;
+  repeatMode: 'off' | 'all' | 'one';
+  onToggleRepeat: () => void;
 }
 
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
@@ -27,152 +22,56 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   onPrev,
   onNext,
   currentTrack,
-  onTrackSelect,
-  enabledServices
+  onOpenLibrary,
+  shuffle,
+  onToggleShuffle,
+  repeatMode,
+  onToggleRepeat
 }) => {
-  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
-
-  // Sync internal active source state with the current track prop
-  useEffect(() => {
-    if (currentTrack) {
-      const demoTrack = Object.values(DEMO_TRACKS).find(t => t.name === currentTrack.name);
-      if (demoTrack) {
-        setActiveSourceId(demoTrack.id);
-      } else {
-        setActiveSourceId(null);
-      }
-    } else {
-      setActiveSourceId(null);
-    }
-  }, [currentTrack]);
-
-  // Filter tracks based on settings
-  const visibleTracks = Object.values(DEMO_TRACKS).filter(track => enabledServices.includes(track.id));
-
-  // Auto-select if only one service is available
-  useEffect(() => {
-    if (visibleTracks.length === 1) {
-      const soleTrack = visibleTracks[0];
-      // Only set if not already selected/loaded to avoid infinite loops
-      if (currentTrack?.name !== soleTrack.name) {
-          setActiveSourceId(soleTrack.id);
-          onTrackSelect({
-            name: soleTrack.name,
-            artist: soleTrack.artist,
-            album: soleTrack.album,
-            source: soleTrack.source
-          });
-      }
-    }
-  }, [visibleTracks, currentTrack, onTrackSelect]);
-
-  const handleSourceClick = (trackConfig: any) => {
-    // If it's the only one enabled, don't allow toggling off
-    if (visibleTracks.length === 1 && activeSourceId === trackConfig.id) {
-        return;
-    }
-
-    if (activeSourceId === trackConfig.id) {
-        // Toggle off/collapse if clicking active
-        setActiveSourceId(null);
-    } else {
-        // Select new
-        setActiveSourceId(trackConfig.id);
-        onTrackSelect({
-          name: trackConfig.name,
-          artist: trackConfig.artist,
-          album: trackConfig.album,
-          source: trackConfig.source
-        });
-    }
-  };
-
+  
   return (
-    <div className="relative w-full">
+    <div className="relative w-full flex flex-col justify-end">
       
-      {/* TRAY: Absolute positioned 'Connector Bar' that sits ABOVE the player controls 
-          and slides down BEHIND them when playing. */}
+      {/* ACCESS NEURAL LIBRARY BUTTON */}
       <div 
         className={`
-            absolute bottom-[98%] left-0 w-full 
-            bg-[#111] border-t border-gray-800 
-            transition-all duration-1000 ease-in-out
-            overflow-hidden
-            z-10
-            ${isPlaying ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}
+            w-full transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden px-4
+            ${isPlaying ? 'max-h-0 opacity-0' : 'max-h-24 opacity-100 pb-2'}
         `}
       >
-        <div className="p-6 pb-2 flex w-full gap-2">
-            {visibleTracks.map((track) => {
-            const isActive = activeSourceId === track.id;
-            const isHidden = activeSourceId && !isActive; // Hide if another is active
-
-            // Visual Logic
-            const showGlow = isActive && !isPlaying;
-            const shadowClass = showGlow ? 'shadow-[0_-6px_20px_rgba(255,255,255,0.6)]' : 'shadow-none';
-            const layoutClass = isHidden ? 'w-0 opacity-0 p-0 m-0 border-0' : 'flex-1 opacity-100';
-
-            return (
-                <button
-                key={track.id}
-                onClick={() => handleSourceClick(track)}
-                className={`
-                    relative h-12 rounded-full flex items-center justify-center overflow-hidden
-                    ${layoutClass}
-                    ${isActive ? 'bg-white' : 'bg-zinc-300 hover:bg-zinc-200'}
-                    ${shadowClass}
-                `}
-                style={{
-                    transitionProperty: 'flex-grow, width, margin, padding, opacity, background-color, box-shadow',
-                    transitionDuration: '300ms, 300ms, 300ms, 300ms, 300ms, 300ms, 3000ms',
-                    transitionTimingFunction: 'cubic-bezier(0.25, 1, 0.5, 1)'
-                }}
-                title={track.platform}
-                >
-                <div 
-                    className={`
-                    absolute inset-0 bg-black pointer-events-none transition-opacity duration-[3000ms] ease-linear
-                    ${isActive && isPlaying ? 'opacity-50' : 'opacity-0'}
-                    `}
-                />
-
-                <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${isActive ? 'opacity-0' : 'opacity-100'}`}>
-                    <SourceIcon id={track.id} className="w-6 h-6 text-black" />
-                </div>
-
-                <div className={`relative z-10 flex items-center justify-center gap-2 transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-0'}`}>
-                    <div className="w-5 h-5 text-black flex items-center justify-center">
-                        <SourceIcon id={track.id} className="w-full h-full" />
-                    </div>
-                    <span className="text-black font-bold uppercase tracking-widest text-xs whitespace-nowrap pt-[2px]">
-                    {track.platform}
-                    </span>
-                </div>
-                </button>
-            )
-            })}
-        </div>
+         <button
+            onClick={onOpenLibrary}
+            className="w-full h-12 md:h-14 bg-black/80 backdrop-blur border border-zinc-800 rounded-lg flex items-center justify-between px-4 group hover:border-fuchsia-500/50 hover:bg-fuchsia-900/10 transition-all shadow-lg"
+         >
+            <div className="flex items-center gap-3 overflow-hidden">
+                 <div className="w-8 h-8 shrink-0 rounded bg-fuchsia-900/20 border border-fuchsia-500/30 flex items-center justify-center text-fuchsia-400 group-hover:animate-pulse shadow-[0_0_10px_rgba(217,70,239,0.2)]">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
+                    </svg>
+                 </div>
+                 <div className="flex flex-col items-start text-left truncate">
+                    <span className="text-xs font-bold text-fuchsia-500 uppercase tracking-widest group-hover:text-fuchsia-400 font-orbitron truncate w-full">Access Neural Library</span>
+                 </div>
+            </div>
+            
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-zinc-600 group-hover:text-white transition-colors" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+            </svg>
+         </button>
       </div>
 
-      {/* CONTROLS: Fixed at bottom relative to this container, sits ON TOP of the tray via z-index */}
-      <div className="relative z-30 w-full bg-[#111] border-t border-gray-800 flex items-center justify-between gap-4 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2">
-        {/* Track Info */}
-        <div className="flex-1 overflow-hidden">
+      {/* CONTROLS: DOCKED PANEL */}
+      <div className="relative z-30 w-full bg-black/90 backdrop-blur-md border-t border-cyan-500/50 rounded-t-lg shadow-[0_-4px_20px_rgba(6,182,212,0.2)] flex items-center justify-between px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        
+        {/* LEFT: INFO */}
+        <div className="flex-1 overflow-hidden min-w-0 mr-4">
           {currentTrack ? (
             <div className="flex flex-col justify-center leading-tight">
-              {/* Title Row */}
-              <div className="flex items-center gap-2 mb-0.5">
-                 <div className={`text-cyan-400 transition-all duration-[3000ms] ${isPlaying ? 'w-4 h-4 opacity-100' : 'w-0 h-0 opacity-0 overflow-hidden'}`}>
-                    {activeSourceId && <SourceIcon id={activeSourceId} className="w-full h-full" />}
-                 </div>
-                 <span className="text-cyan-400 font-bold text-sm truncate brand-font tracking-wide">
+              <div className="text-cyan-400 font-bold text-sm truncate brand-font tracking-wide">
                    {currentTrack.name}
-                 </span>
               </div>
-              <div className="text-zinc-400 text-xs truncate font-mono font-medium">
+              <div className="text-[10px] font-mono text-gray-400 uppercase tracking-widest truncate">
                 {currentTrack.artist || 'Unknown Artist'}
-                <span className="mx-1.5 opacity-50">•</span>
-                {currentTrack.album || 'Unknown Album'}
               </div>
             </div>
           ) : (
@@ -180,28 +79,63 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* Compact Controls */}
-        <div className="flex items-center gap-3 py-1">
-          <button onClick={onPrev} className="text-gray-500 hover:text-white p-2">
+        {/* RIGHT: CONTROL CLUSTER */}
+        <div className="flex items-center gap-4 shrink-0">
+          
+          {/* SHUFFLE */}
+          <button 
+            onClick={onToggleShuffle} 
+            className={`transition-colors p-1 ${shuffle ? 'text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]' : 'text-zinc-600 hover:text-zinc-400'}`}
+          >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 3h5v5" />
+                <path d="M4 20L21 3" />
+                <path d="M21 16v5h-5" />
+                <path d="M15 15l-5 5-6-6" />
+                <path d="M4 4l5 5" />
+             </svg>
+          </button>
+
+          {/* PREV */}
+          <button onClick={onPrev} className="text-zinc-400 hover:text-white transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
           </button>
           
+          {/* PLAY/PAUSE */}
           <button
             onClick={onPlayPause}
-            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-              isPlaying ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-white/10 text-white border border-white/20'
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+              isPlaying ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.6)] hover:scale-105' : 'bg-zinc-800 text-white border border-zinc-700 hover:border-cyan-500/50'
             }`}
           >
             {isPlaying ? (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 translate-x-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 translate-x-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             )}
           </button>
 
-          <button onClick={onNext} className="text-gray-500 hover:text-white p-2">
+          {/* NEXT */}
+          <button onClick={onNext} className="text-zinc-400 hover:text-white transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
           </button>
+
+          {/* REPEAT */}
+          <button 
+            onClick={onToggleRepeat} 
+            className={`transition-colors p-1 relative ${repeatMode !== 'off' ? 'text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.8)]' : 'text-zinc-600 hover:text-zinc-400'}`}
+          >
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 1l4 4-4 4" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <path d="M7 23l-4-4 4-4" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+             </svg>
+             {repeatMode === 'one' && (
+                <span className="absolute -top-1 -right-1 text-[8px] font-bold bg-black text-cyan-400 px-0.5 rounded border border-cyan-900 leading-none">1</span>
+             )}
+          </button>
+
         </div>
       </div>
     </div>

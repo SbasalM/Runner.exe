@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource, WorkoutSession } from './types';
-import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG, SKULL_MODEL_URL, DEMO_PLAYLIST } from './constants';
+import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource, WorkoutSession, Playlist } from './types';
+import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG, SKULL_MODEL_URL, DEMO_PLAYLIST, DEMO_TRACKS } from './constants';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useRunEngine } from './hooks/useRunEngine';
 import { useGymEngine } from './hooks/useGymEngine';
@@ -16,14 +16,30 @@ import { ProfileModal } from './components/ProfileModal';
 import { SplashScreen } from './components/SplashScreen';
 import { WorkoutSummary } from './components/WorkoutSummary';
 import { GestureController } from './components/GestureController';
+import { MusicLibrary } from './components/MusicLibrary';
+import { v4 as uuidv4 } from 'uuid';
 
 const App: React.FC = () => {
   // --- Global State ---
   const [hasStarted, setHasStarted] = useState(false);
-  const [bpm, setBpm] = useState<number>(100);
-  const [currentTrack, setCurrentTrack] = useState<SongMetadata | null>(null);
+  const [bpm, setBpm] = useState<number>(60);
+  
+  const [currentTrack, setCurrentTrack] = useState<SongMetadata | null>(() => {
+    try {
+        const savedTrack = localStorage.getItem('cp_last_track');
+        return savedTrack ? JSON.parse(savedTrack) : Object.values(DEMO_TRACKS)[0];
+    } catch (e) {
+        return null;
+    }
+  });
+
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  
+  // Playback State
+  const [shuffle, setShuffle] = useState(false);
+  const [shuffledTracks, setShuffledTracks] = useState<SongMetadata[]>([]);
+  const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
   
   // Custom Avatar State
   const [avatarUrl, setAvatarUrl] = useState<string>(SKULL_MODEL_URL);
@@ -31,30 +47,37 @@ const App: React.FC = () => {
   
   // Settings & Modes
   const [workoutMode, setWorkoutMode] = useState<WorkoutMode>(WorkoutMode.RUN);
-  // Track which mode is effectively "Active" (accumulating data or paused mid-session)
-  // This separates the UI Tab (workoutMode) from the Engine State (activeSessionMode)
   const [activeSessionMode, setActiveSessionMode] = useState<WorkoutMode | null>(null);
 
   const [settings, setSettings] = useState<Settings>({
     units: UnitSystem.IMPERIAL,
     targetMin: BPM_TARGET_LOW,
     targetMax: BPM_TARGET_HIGH,
-    enabledServices: ['spotify', 'apple', 'youtube', 'amazon'],
+    enabledServices: ['spotify', 'apple', 'youtube', 'amazon'], 
     inputSource: InputSource.HEART_RATE,
-    sessionDuration: 30, // 30 minutes default
+    sessionDuration: 30, 
     slugStart: true,
     overdriveSpeedup: true,
     useGPS: false,
-    gestureControlEnabled: false
+    gestureControlEnabled: false,
+    showJudgeControls: false
   });
 
   const [isCooldown, setIsCooldown] = useState(false);
-  // Cooldown Transition State: IDLE -> TEXT (Animation) -> BUTTONS (Interactive)
   const [cooldownStage, setCooldownStage] = useState<'IDLE' | 'TEXT' | 'BUTTONS'>('IDLE');
 
+  // --- GYM SPECIFIC STATE ---
+  const [personalRecords, setPersonalRecords] = useState<Record<string, number>>({});
+  const [exerciseHistory, setExerciseHistory] = useState<string[]>([]); // Unique list of titles
+
   // --- Timer Mode State ---
-  // We need a separate timer to track the session progress if InputSource is TIMER
-  const [timerElapsed, setTimerElapsed] = useState(0); // seconds
+  const [timerElapsed, setTimerElapsed] = useState(0); 
+
+  // --- Visualizer Data State ---
+  const [vizDataMode, setVizDataMode] = useState<'BPM' | 'DIST' | 'PACE' | 'CAL'>('BPM');
+  const [isCelebration, setIsCelebration] = useState(false);
+  const lastMileInteger = useRef(0);
+  const prevVizDataModeRef = useRef<'BPM' | 'DIST' | 'PACE' | 'CAL'>('BPM');
 
   // History & Summary State
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutSession[]>([]);
@@ -65,7 +88,8 @@ const App: React.FC = () => {
   const [showDebugPanel, setShowDebugPanel] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showBpmOverlay, setShowBpmOverlay] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [showBpmOverlay, setShowBpmOverlay] = useState(false); 
   const [introComplete, setIntroComplete] = useState(false);
   
   // Idle Mode State
@@ -76,6 +100,23 @@ const App: React.FC = () => {
   const [holdProgress, setHoldProgress] = useState(0);
   const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isStopTriggeredRef = useRef(false);
+
+  // --- LIBRARY STATE ---
+  const [libraryTracks, setLibraryTracks] = useState<SongMetadata[]>(Object.values(DEMO_TRACKS));
+  const [libraryPlaylists, setLibraryPlaylists] = useState<Playlist[]>([
+    {
+        id: 'demo-playlist-1',
+        name: 'CYBER_CORE_DEMO',
+        tracks: DEMO_PLAYLIST,
+        isSystem: true
+    }
+  ]);
+
+  useEffect(() => {
+    if (currentTrack) {
+        localStorage.setItem('cp_last_track', JSON.stringify(currentTrack));
+    }
+  }, [currentTrack]);
 
   const resetIdleTimer = () => {
     setIsIdle(false);
@@ -90,98 +131,167 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Cooldown Transition Sequencer
   useEffect(() => {
     if (isCooldown) {
       setCooldownStage('TEXT');
       const timer = setTimeout(() => {
         setCooldownStage('BUTTONS');
-      }, 5000); // 5s duration to match visualizer BPM Spotlight return
+      }, 5000); 
       return () => clearTimeout(timer);
     } else {
       setCooldownStage('IDLE');
     }
   }, [isCooldown]);
 
-  // --- PLAYLIST AUTO-SKIP LOGIC ---
   const skipRef = useRef<((direction: 'next' | 'prev', forcePlay: boolean) => void) | null>(null);
 
   const onTrackEnd = () => {
-    if (skipRef.current) {
+    if (repeatMode === 'one' && currentTrack) {
+        loadTrack(currentTrack.source, true);
+    } else if (skipRef.current) {
         skipRef.current('next', true);
     }
   };
   
-  // --- Audio Mode Logic ---
-  // Derived based on BPM (if Heart Sync) OR Time (if Timer Mode)
+  // --- MODE CALCULATOR ---
   const currentMode = useMemo((): AppMode => {
+    // 1. GYM MODE LOGIC OVERRIDE
+    if (workoutMode === WorkoutMode.GYM) {
+        // Cooldown = RESTING (Low Energy / Motivation)
+        // Active = WORKING (High Energy / Zone)
+        return isCooldown ? AppMode.MOTIVATION : AppMode.ZONE;
+    }
+
+    // 2. RUN MODE LOGIC (Standard)
     if (isCooldown) return AppMode.COOLDOWN;
 
     if (settings.inputSource === InputSource.TIMER) {
-        // TIMER MODE LOGIC
         const durationSecs = settings.sessionDuration * 60;
-        
-        // 1. Slug Start (Warmup) - First 10 seconds
-        if (settings.slugStart && timerElapsed < 10) {
-            return AppMode.MOTIVATION;
-        }
-
-        // 2. Main Session - In The Zone
-        if (timerElapsed < durationSecs) {
-            return AppMode.ZONE;
-        }
-
-        // 3. Overtime - Overdrive
+        if (settings.slugStart && timerElapsed < 10) return AppMode.MOTIVATION;
+        if (timerElapsed < durationSecs) return AppMode.ZONE;
         return AppMode.OVERDRIVE;
-
     } else {
-        // HEART RATE LOGIC
         if (bpm < settings.targetMin) return AppMode.MOTIVATION;
         if (bpm > settings.targetMax) return AppMode.OVERDRIVE;
         return AppMode.ZONE;
     }
-  }, [bpm, settings, isCooldown, timerElapsed]);
+  }, [bpm, settings, isCooldown, timerElapsed, workoutMode]);
 
-  // --- Effective BPM for Visuals ---
-  // If in Timer mode, we need to fake the BPM so the skull/pulse visuals match the mode
   const effectiveBpm = useMemo(() => {
     if (settings.inputSource === InputSource.TIMER) {
-        if (currentMode === AppMode.MOTIVATION) return 90; // Slow pulse
-        if (currentMode === AppMode.ZONE) return 140; // Target pulse
-        if (currentMode === AppMode.OVERDRIVE) return 170; // Fast pulse
+        if (currentMode === AppMode.MOTIVATION) return 90;
+        if (currentMode === AppMode.ZONE) return 140;
+        if (currentMode === AppMode.OVERDRIVE) return 170;
         if (currentMode === AppMode.COOLDOWN) return 70;
         return 60;
     }
     return bpm;
   }, [bpm, settings.inputSource, currentMode]);
 
-  // Track Mode Changes for 7s Overlay
+  // Track Mode Changes for Data Spotlight
   const prevModeRef = useRef<AppMode>(currentMode);
   useEffect(() => {
     if (currentMode !== prevModeRef.current) {
-      setShowBpmOverlay(true);
-      const timer = setTimeout(() => setShowBpmOverlay(false), 7000); 
+      // Only show BPM overlay in RUN mode to avoid clutter in GYM
+      if (workoutMode === WorkoutMode.RUN) {
+          setShowBpmOverlay(true);
+          const timer = setTimeout(() => setShowBpmOverlay(false), 7000); 
+          prevModeRef.current = currentMode;
+          return () => clearTimeout(timer);
+      }
       prevModeRef.current = currentMode;
-      return () => clearTimeout(timer);
     }
-  }, [currentMode]);
+  }, [currentMode, workoutMode]);
 
-  // --- Engines ---
-  // Pass overdrive settings to audio engine
   const { isPlaying, togglePlay, loadTrack, volume, setVolume } = useAudioEngine(currentMode, onTrackEnd, settings.overdriveSpeedup);
   
-  // Engines now only activate if global playing IS TRUE **AND** their specific mode is the Active Session
+  useEffect(() => {
+    if (currentTrack && !isPlaying) {
+        loadTrack(currentTrack.source, false);
+    }
+  }, []); 
+
   const runStats = useRunEngine(effectiveBpm, isPlaying, settings.units, isPlaying && activeSessionMode === WorkoutMode.RUN && !isCooldown, settings.useGPS);
   const gymStats = useGymEngine(isPlaying, currentMode, isPlaying && activeSessionMode === WorkoutMode.GYM && !isCooldown);
   
-  // Progression System
   const { unlockedItems, newUnlock, lifetimeDistanceMiles, toggleUnlock } = useProgression(runStats.rawDistanceKm);
+
+  // --- MILE MARKER / PR CELEBRATION LOGIC ---
+  const triggerCelebration = (msg: string) => {
+      // 1. Save current data mode
+      prevVizDataModeRef.current = vizDataMode;
+      // 2. Force Distance Mode (or any neutral text mode)
+      setVizDataMode('DIST');
+      // 3. Trigger effects
+      setIsCelebration(true);
+      triggerToast(msg);
+      
+      // 4. Reset after 5s
+      setTimeout(() => {
+          setIsCelebration(false);
+          setVizDataMode(prevVizDataModeRef.current);
+      }, 5000);
+  };
+
+  useEffect(() => {
+      let dist = parseFloat(runStats.distance);
+      if (isNaN(dist)) dist = 0;
+
+      const currentInt = Math.floor(dist);
+      
+      if (currentInt > lastMileInteger.current && currentInt > 0) {
+          triggerCelebration(`MILESTONE: ${currentInt} ${runStats.distanceUnit}`);
+      }
+      lastMileInteger.current = currentInt;
+  }, [runStats.distance, runStats.distanceUnit]);
+
+  // Handle Gym PR Logic & Logging
+  const handleGymSetSave = (title: string, weight: number, reps: number) => {
+    const cleanTitle = title.trim();
+    if (!cleanTitle) {
+        setIsCooldown(false);
+        return;
+    }
+
+    // 1. Update suggestions list
+    if (!exerciseHistory.includes(cleanTitle)) {
+        setExerciseHistory(prev => [...prev, cleanTitle]);
+    }
+
+    // 2. Check PR
+    const currentMax = personalRecords[cleanTitle] || 0;
+    if (weight > currentMax) {
+        setPersonalRecords(prev => ({ ...prev, [cleanTitle]: weight }));
+        triggerCelebration(`NEW PR: ${cleanTitle}`);
+    } else {
+        triggerToast("SET LOGGED");
+    }
+
+    // 3. Save to History (Mission Logs)
+    const setLog: WorkoutSession = {
+        id: uuidv4(),
+        date: Date.now(),
+        mode: WorkoutMode.GYM,
+        title: cleanTitle,
+        weight: weight.toString(),
+        reps: reps.toString(),
+        duration: 'SET', // Marker for a single set
+        calories: 0 
+    };
+    setWorkoutHistory(prev => [setLog, ...prev]);
+
+    // 4. Resume Session
+    setIsCooldown(false);
+  };
+
+  // Manual Trigger for Judge Testing
+  const handleManualMilestone = () => {
+      triggerCelebration(`MANUAL MILESTONE TEST`);
+  };
 
   const modeConfig = MODE_CONFIG[currentMode];
 
-  // --- Timer Mode Counter ---
   useEffect(() => {
-      // If we are playing AND in Timer Mode, increment the timer
       if (isPlaying && settings.inputSource === InputSource.TIMER && !isCooldown) {
           const interval = setInterval(() => {
               setTimerElapsed(prev => prev + 1);
@@ -190,17 +300,14 @@ const App: React.FC = () => {
       }
   }, [isPlaying, settings.inputSource, isCooldown]);
 
-  // Force Idle (dim controls) when Play starts
   useEffect(() => {
     if (isPlaying) {
       setIsIdle(true);
     }
   }, [isPlaying]);
 
-  // Cinematic Intro Logic
   useEffect(() => {
     if (isPlaying && !introComplete) {
-      // Hold "Ready" message for 4s after play starts
       const timer = setTimeout(() => {
         setIntroComplete(true);
       }, 4000);
@@ -208,23 +315,74 @@ const App: React.FC = () => {
     }
   }, [isPlaying, introComplete]);
 
-  // Determine Visualizer Label
   const introLabel = workoutMode === WorkoutMode.RUN ? "READY TO RUN" : "SYSTEM READY";
   const visualizerLabel = introComplete ? modeConfig.label : introLabel;
-  
-  // Standby = Not playing AND Intro not yet complete (First load)
   const isStandby = !isPlaying && !introComplete;
 
-  // --- Helpers ---
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setShowToast(true);
     setTimeout(() => setShowToast(false), 3000);
   };
 
+  const formatTime = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  // Logic to determine visualizer data
+  let centerDisplayValue: string | number | null = effectiveBpm;
+  let centerDisplayLabel = "BPM";
+
+  if (showBpmOverlay && settings.inputSource === InputSource.HEART_RATE) {
+      centerDisplayValue = effectiveBpm;
+      centerDisplayLabel = "BPM";
+  } else {
+    if (settings.inputSource === InputSource.TIMER) {
+        centerDisplayValue = formatTime(timerElapsed);
+        centerDisplayLabel = "TIME";
+    } else if (workoutMode === WorkoutMode.RUN) {
+        if (vizDataMode === 'DIST') {
+            centerDisplayValue = runStats.distance;
+            centerDisplayLabel = runStats.distanceUnit;
+        } else if (vizDataMode === 'PACE') {
+            centerDisplayValue = runStats.pace;
+            centerDisplayLabel = runStats.paceUnit;
+        } else if (vizDataMode === 'CAL') {
+            centerDisplayValue = runStats.calories;
+            centerDisplayLabel = "KCAL";
+        }
+    } else if (workoutMode === WorkoutMode.GYM) {
+        // In Gym Mode, we want GymMetrics to handle the Hero Timer
+        centerDisplayValue = ""; 
+    }
+  }
+
+  const handleVizClick = () => {
+    if (settings.inputSource === InputSource.TIMER) return;
+    if (workoutMode !== WorkoutMode.RUN) return;
+    // Disable clicking during celebration to avoid mode desync
+    if (isCelebration) return; 
+    
+    setVizDataMode(prev => {
+        if (prev === 'BPM') {
+            return 'DIST';
+        }
+        if (prev === 'DIST') {
+            return 'PACE';
+        }
+        if (prev === 'PACE') {
+            return 'CAL';
+        }
+        return 'BPM';
+    });
+  };
+
   const handleFileSelect = (file: File) => {
     const objectUrl = URL.createObjectURL(file);
     setCurrentTrack({ 
+      id: uuidv4(),
       name: file.name.replace(/\.[^/.]+$/, ""), 
       artist: "Local Upload",
       album: "User Device",
@@ -254,89 +412,108 @@ const App: React.FC = () => {
     });
   };
 
-  // Wrapper for Debug Panel to unequip item if it gets locked
   const handleJudgeToggleUnlock = (item: string) => {
     const isUnlocked = unlockedItems.includes(item);
     toggleUnlock(item);
     
     if (isUnlocked) {
-      // We are locking it (removing from available). Ensure it's unequipped.
       setEquippedItems(prev => prev.filter(i => i !== item));
+    } else {
+      setEquippedItems(prev => {
+          if (!prev.includes(item)) return [...prev, item];
+          return prev;
+      });
+      triggerToast(`${item.replace('_', ' ')} UNLOCKED & EQUIPPED`);
     }
+  };
+
+  const handleToggleShuffle = () => {
+    setShuffle(prev => {
+        const nextState = !prev;
+        if (nextState) {
+            const newShuffled = [...libraryTracks];
+            for (let i = newShuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newShuffled[i], newShuffled[j]] = [newShuffled[j], newShuffled[i]];
+            }
+            setShuffledTracks(newShuffled);
+            triggerToast("Shuffle Enabled");
+        } else {
+            setShuffledTracks([]); 
+            triggerToast("Shuffle Disabled");
+        }
+        return nextState;
+    });
   };
 
   const handleSkip = (direction: 'next' | 'prev', forcePlay = false) => {
-    if (!currentTrack) return;
+    const list = shuffle && shuffledTracks.length > 0 ? shuffledTracks : libraryTracks;
     
-    // Check if we are playing a demo track to enable playlist features
-    const currentIndex = DEMO_PLAYLIST.findIndex(t => t.name === currentTrack.name);
+    if (!currentTrack || list.length === 0) return;
     
+    if (repeatMode === 'one' && forcePlay) {
+         loadTrack(currentTrack.source, true);
+         return;
+    }
+
+    const currentIndex = list.findIndex(t => 
+        (t.id && currentTrack.id && t.id === currentTrack.id) || t.name === currentTrack.name
+    );
+    
+    let nextTrack: SongMetadata;
+
     if (currentIndex !== -1) {
-        // Calculate new index
         let newIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
         
-        // Loop playlist
-        if (newIndex >= DEMO_PLAYLIST.length) newIndex = 0;
-        if (newIndex < 0) newIndex = DEMO_PLAYLIST.length - 1;
+        if (newIndex >= list.length) newIndex = 0;
+        if (newIndex < 0) newIndex = list.length - 1;
         
-        const nextTrack = DEMO_PLAYLIST[newIndex];
-        
-        // Use existing selection logic with optional forcePlay
-        handleTrackSelect(nextTrack, forcePlay);
-        
-        // Notification removed as per request
+        nextTrack = list[newIndex];
     } else {
-        triggerToast("Playlist unavailable for custom tracks");
+        nextTrack = list[0];
     }
+    
+    handleTrackSelect(nextTrack, forcePlay);
   };
 
-  // Keep ref updated
+  const handleToggleRepeat = () => {
+      setRepeatMode(prev => {
+          if (prev === 'off') return 'all';
+          if (prev === 'all') return 'one';
+          return 'off';
+      });
+  };
+
   useEffect(() => {
     skipRef.current = handleSkip;
-  }, [handleSkip]);
+  }, [handleSkip, libraryTracks, shuffledTracks, currentTrack, shuffle, repeatMode]);
 
-  // --- Logic to Switch Tabs ---
   const handleTabSwitch = (newMode: WorkoutMode) => {
     if (newMode === workoutMode) return;
-    
-    // If currently playing, we must PAUSE/FREEZE because we are entering a new mode context.
     if (isPlaying) {
-        togglePlay(); // This effectively pauses the engine via the isActive prop update
+        togglePlay(); 
         triggerToast("Session Paused");
     }
-    
     setWorkoutMode(newMode);
   };
 
-  // --- Logic to Handle Play/Pause with Auto-End ---
   const handleGlobalPlayPause = () => {
-      // 1. If currently playing, just Pause.
       if (isPlaying) {
           togglePlay();
           return;
       }
-
-      // 2. If resuming/starting:
-      // Check if we have a suspended session of a DIFFERENT type.
       if (activeSessionMode && activeSessionMode !== workoutMode) {
-          // Detect Auto-End Scenario: User has switched tabs and is now starting a new workout type.
-          // End the previous one automatically.
           handleFinishWorkout(activeSessionMode); 
           triggerToast(`${activeSessionMode} Session Logged`);
       }
-
-      // 3. Set Active Session to CURRENT tab and Play
       setActiveSessionMode(workoutMode);
       togglePlay();
   };
 
-  // --- Workout Finish Logic ---
-  // Accepts optional mode to finish a specific suspended session type
   const handleFinishWorkout = (modeToFinish?: WorkoutMode) => {
     const targetMode = modeToFinish || workoutMode;
     const isRun = targetMode === WorkoutMode.RUN;
 
-    // 1. Capture Stats based on mode 
     const sessionData: WorkoutSession = {
         id: Date.now().toString(),
         date: Date.now(),
@@ -350,37 +527,38 @@ const App: React.FC = () => {
         sessionData.distance = `${runStats.distance} ${runStats.distanceUnit}`;
         sessionData.avgPace = runStats.pace;
         sessionData.duration = "N/A"; 
-    } else {
-        // Gym specific fields can be edited later
-    }
+    } 
 
-    // 2. Save to History
     setWorkoutHistory(prev => [sessionData, ...prev]);
     setLastSession(sessionData);
 
-    // 3. Reset Engine Stats explicitly based on which one finished
     if (isRun) {
         runStats.reset();
     } else {
         gymStats.reset();
     }
 
-    // Only reset global timer if we finished the *current* active interaction
     if (targetMode === activeSessionMode) {
         setTimerElapsed(0);
-        setActiveSessionMode(null); // Clear active session
+        setActiveSessionMode(null); 
         setIsCooldown(false);
-        if (isPlaying) togglePlay(); // Stop music
+        if (isPlaying) togglePlay(); 
         setShowSummaryModal(true);
     }
   };
 
-  // Allow updating history items (e.g. from Profile Modal)
+  const handleDeleteSession = (sessionId: string) => {
+      setWorkoutHistory(prev => prev.filter(s => s.id !== sessionId));
+      if (lastSession?.id === sessionId) {
+          setLastSession(null);
+      }
+      triggerToast("Entry Deleted");
+  };
+
   const handleUpdateSession = (updatedSession: WorkoutSession) => {
       setWorkoutHistory(prev => prev.map(s => s.id === updatedSession.id ? updatedSession : s));
   };
   
-  // Handlers for Gesture Controller (Wrapped for safety/clarity)
   const handleToggleCooldown = () => {
       setIsCooldown(prev => !prev);
   };
@@ -389,15 +567,13 @@ const App: React.FC = () => {
       handleFinishWorkout();
   };
 
-  // --- Hold-to-Stop Logic ---
   const startHold = (e: React.SyntheticEvent) => {
-      // e.preventDefault(); // Optional: prevent touch scrolling if needed, but passive is usually better
       if (holdTimerRef.current) clearInterval(holdTimerRef.current);
       setHoldProgress(0);
       isStopTriggeredRef.current = false;
 
       const startTime = Date.now();
-      const duration = 1500; // 1.5s to trigger stop
+      const duration = 1500; 
 
       holdTimerRef.current = setInterval(() => {
           const elapsed = Date.now() - startTime;
@@ -416,12 +592,9 @@ const App: React.FC = () => {
 
   const endHold = () => {
       if (holdTimerRef.current) clearInterval(holdTimerRef.current);
-      
       if (!isStopTriggeredRef.current) {
-          // If we released BEFORE 100%, treat it as a normal click (Activate Cooldown)
           setIsCooldown(true);
       }
-      
       setHoldProgress(0);
       isStopTriggeredRef.current = false;
   };
@@ -432,13 +605,78 @@ const App: React.FC = () => {
       isStopTriggeredRef.current = false;
   };
 
+  const handleAddTracks = (newTracks: SongMetadata[]) => {
+    setLibraryTracks(prev => [...prev, ...newTracks]);
+  };
+
+  const handleDeleteTrack = (trackId: string) => {
+      setLibraryTracks(prev => prev.filter(t => t.id !== trackId));
+      setLibraryPlaylists(prev => prev.map(playlist => ({
+          ...playlist,
+          tracks: playlist.tracks.filter(t => t.id !== trackId)
+      })));
+
+      if (currentTrack?.id === trackId && isPlaying) {
+          togglePlay();
+      }
+      triggerToast("Track Deleted");
+  };
+
+  const handleRemoveFromPlaylist = (playlistId: string, trackId: string) => {
+    setLibraryPlaylists(prev => prev.map(p => {
+      if (p.id === playlistId) {
+        return { 
+            ...p, 
+            tracks: p.tracks.filter(t => t.id !== trackId) 
+        };
+      }
+      return p;
+    }));
+    triggerToast("Track Removed from Playlist");
+  };
+
+  const handleCreatePlaylist = (name: string) => {
+    const newPlaylist: Playlist = {
+      id: uuidv4(),
+      name,
+      tracks: []
+    };
+    setLibraryPlaylists(prev => [...prev, newPlaylist]);
+  };
+
+  const handleAddToPlaylist = (playlistId: string, track: SongMetadata) => {
+    setLibraryPlaylists(prev => prev.map(p => {
+      if (p.id === playlistId) {
+        return { ...p, tracks: [...p.tracks, track] };
+      }
+      return p;
+    }));
+    triggerToast("Added to Playlist");
+  };
+
   return (
     <div className="h-[100dvh] w-full bg-[#050505] flex items-center justify-center p-0 md:p-8 font-mono overflow-hidden relative">
       
-      {/* Splash Screen Overlay */}
+      {/* LANDSCAPE WARNING OVERLAY */}
+      <div className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center text-center p-8 landscape-warning hidden">
+          <div className="mb-4 text-cyan-500 animate-spin-slow">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+          </div>
+          <h2 className="text-xl font-bold text-white brand-font tracking-widest mb-2">SYSTEM LOCKED</h2>
+          <p className="text-sm text-gray-500 font-mono">PLEASE ROTATE DEVICE TO PORTRAIT MODE</p>
+      </div>
+      <style>{`
+        @media screen and (orientation: landscape) and (max-height: 600px) {
+            .landscape-warning {
+                display: flex !important;
+            }
+        }
+      `}</style>
+
       {!hasStarted && <SplashScreen onStart={() => setHasStarted(true)} />}
 
-      {/* Global Gesture Controller */}
       <GestureController 
           isEnabled={settings.gestureControlEnabled}
           onPlayPause={handleGlobalPlayPause}
@@ -449,7 +687,6 @@ const App: React.FC = () => {
           isCooldown={isCooldown}
       />
 
-      {/* External Debug Panel */}
       <DebugPanel 
         isOpen={showDebugPanel} 
         onClose={() => setShowDebugPanel(false)}
@@ -460,10 +697,11 @@ const App: React.FC = () => {
         onAvatarSelect={handleAvatarSelect}
         unlockedItems={unlockedItems}
         toggleUnlock={handleJudgeToggleUnlock}
+        triggerManualMilestone={handleManualMilestone}
       />
 
-      {/* Judge Controls Button (Renamed from DEBUG) */}
-      {settings.inputSource === InputSource.HEART_RATE && hasStarted && (
+      {/* JUDGE CONTROLS BUTTON - Now respects the toggle setting */}
+      {settings.inputSource === InputSource.HEART_RATE && hasStarted && settings.showJudgeControls && (
         <button 
             onClick={() => setShowDebugPanel(!showDebugPanel)}
             className="fixed top-20 right-4 z-[60] bg-black border border-cyan-400 text-cyan-400 px-3 py-1.5 rounded-full font-black text-[10px] uppercase tracking-widest hover:bg-cyan-400 hover:text-black transition-all shadow-[0_0_10px_rgba(34,211,238,0.4)] opacity-50 hover:opacity-100 flex items-center gap-1"
@@ -472,7 +710,7 @@ const App: React.FC = () => {
         </button>
       )}
 
-      {/* Mobile Device Container - with Idle interaction listeners */}
+      {/* MOBILE DEVICE CONTAINER */}
       <div 
         className="relative w-full max-w-[420px] h-[100dvh] md:h-[850px] bg-black md:rounded-[3rem] md:border-8 md:border-[#1a1a1a] shadow-2xl overflow-hidden flex flex-col"
         onMouseMove={resetIdleTimer}
@@ -480,11 +718,59 @@ const App: React.FC = () => {
         onTouchStart={resetIdleTimer}
         onKeyDown={resetIdleTimer}
       >
-        
-        {/* Ambient Gradient Background */}
-        <div className={`absolute inset-0 transition-colors duration-1000 opacity-20 bg-gradient-to-b ${modeConfig.bgGradient}`}></div>
-        
-        {/* Timer Mode Overlay Indicator */}
+        {/* === VISUALIZER LAYER (Z-0) - Absolute Inset for Rock Solid Positioning === */}
+        <div className="absolute inset-0 z-0 overflow-hidden">
+            <div className={`absolute inset-0 transition-colors duration-1000 opacity-20 bg-gradient-to-b ${modeConfig.bgGradient}`}></div>
+            
+            <HeartVisualizer 
+                bpm={effectiveBpm} 
+                displayValue={centerDisplayValue}
+                displayLabel={centerDisplayLabel}
+                mode={currentMode} 
+                label={visualizerLabel}
+                showBpm={showBpmOverlay && settings.inputSource === InputSource.HEART_RATE}
+                isPlaying={isPlaying}
+                onClick={handleVizClick} 
+                equippedItems={equippedItems}
+                isStandby={isStandby}
+                avatarUrl={avatarUrl}
+                targetMin={settings.targetMin}
+                targetMax={settings.targetMax}
+                isCelebration={isCelebration}
+                // Cooldown Props passed from App
+                holdProgress={holdProgress}
+                onHoldStart={startHold}
+                onHoldEnd={endHold}
+                onHoldCancel={cancelHold}
+                isCooldown={isCooldown}
+                cooldownStage={cooldownStage}
+                onResume={() => setIsCooldown(false)}
+                onStop={handleStopWorkout}
+                // NEW: Pass explicit workout mode to avoid glitches
+                workoutMode={workoutMode}
+            />
+            
+            {workoutMode === WorkoutMode.RUN && (
+                <RunMetrics newUnlock={newUnlock} />
+            )}
+
+            {workoutMode === WorkoutMode.GYM && (
+                <div className="absolute inset-0 z-30 pointer-events-none">
+                    <GymMetrics 
+                        formattedTime={gymStats.formattedTime}
+                        isCooldown={isCooldown}
+                        isPlaying={isPlaying}
+                        onSaveSet={handleGymSetSave}
+                        onStopSession={handleStopWorkout}
+                        suggestions={exerciseHistory}
+                        personalRecords={personalRecords}
+                        onToggleCooldown={handleToggleCooldown}
+                    />
+                </div>
+            )}
+        </div>
+
+        {/* TIMER MODE BADGE */}
         {settings.inputSource === InputSource.TIMER && (
             <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30 bg-fuchsia-900/50 border border-fuchsia-500/30 px-3 py-1 rounded-full backdrop-blur-md pointer-events-none">
                 <div className="flex items-center gap-2">
@@ -494,10 +780,8 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* --- HEADER SECTION: Navigation Controls --- */}
-        {/* Dynamic Z-Index: Normal (z-40) allows interaction. Spotlight (z-20) allows Avatar (z-30) to cover it. Added bg-transparent explicitly. */}
-        <div className={`relative ${showBpmOverlay ? 'z-20' : 'z-40'} flex items-center justify-between px-6 pt-4 pb-2 min-h-[60px] shrink-0 transition-all duration-[3000ms] bg-transparent ${isIdle ? 'opacity-30' : 'opacity-100'}`}>
-             {/* Profile Icon - Left */}
+        {/* --- HEADER (Z-40) --- */}
+        <div className={`relative z-40 flex items-center justify-between px-6 pt-4 pb-2 min-h-[60px] shrink-0 transition-all duration-[3000ms] bg-transparent ${isIdle ? 'opacity-30' : 'opacity-100'}`}>
              <button 
                 onClick={() => setShowProfileModal(true)}
                 className="w-10 h-10 flex items-center justify-center bg-transparent text-gray-400 hover:text-white transition-colors"
@@ -508,8 +792,7 @@ const App: React.FC = () => {
                 </svg>
             </button>
 
-            {/* Run/Gym Switch - Center */}
-            <div className="flex bg-transparent rounded-full p-1">
+            <div className="flex bg-transparent rounded-full p-1 backdrop-blur-sm bg-black/20">
                 <button 
                     onClick={() => handleTabSwitch(WorkoutMode.RUN)}
                     className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-widest transition-all ${workoutMode === WorkoutMode.RUN ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20' : 'text-gray-500 hover:text-white'}`}
@@ -524,7 +807,6 @@ const App: React.FC = () => {
                 </button>
             </div>
 
-            {/* Settings Icon - Right */}
             <button 
                 onClick={() => setShowSettingsModal(true)}
                 className="w-10 h-10 flex items-center justify-center bg-transparent text-gray-400 hover:text-white transition-colors"
@@ -537,118 +819,11 @@ const App: React.FC = () => {
             </button>
         </div>
 
-        {/* --- MAIN CONTENT SECTION: Visualizer + Metrics --- */}
-        {/* Z-Index 30 is correct. Avatar covers header when header drops to z-20. */}
-        <div className="relative z-30 flex-1 min-h-0 flex flex-col items-center justify-center w-full">
-            
-            {/* Visualizer - Scalable */}
-            <div className="flex-none flex items-center justify-center w-full">
-               <HeartVisualizer 
-                  bpm={effectiveBpm} 
-                  mode={currentMode} 
-                  label={visualizerLabel}
-                  showBpm={showBpmOverlay && settings.inputSource === InputSource.HEART_RATE}
-                  isPlaying={isPlaying}
-                  onClick={() => {}} 
-                  equippedItems={equippedItems}
-                  isStandby={isStandby}
-                  avatarUrl={avatarUrl}
-                  targetMin={settings.targetMin}
-                  targetMax={settings.targetMax}
-                  inputSource={settings.inputSource}
-                  timerElapsed={timerElapsed}
-                />
-            </div>
+        {/* SPACER FOR ABSOLUTE VISUALIZER */}
+        <div className="flex-1 min-h-0"></div>
 
-            {/* Metrics - Flexible */}
-            <div className="flex-1 min-h-0 w-full flex flex-col justify-start pb-2">
-               {workoutMode === WorkoutMode.RUN ? (
-                 <RunMetrics 
-                   distance={runStats.distance} 
-                   distanceUnit={runStats.distanceUnit}
-                   pace={runStats.pace} 
-                   paceUnit={runStats.paceUnit}
-                   calories={runStats.calories} 
-                   newUnlock={newUnlock}
-                 />
-               ) : (
-                 <GymMetrics 
-                   formattedTime={gymStats.formattedTime}
-                   percentages={gymStats.percentages}
-                 />
-               )}
-            </div>
-        </div>
-
-        {/* --- FOOTER SECTION: Cooldown + Player --- */}
-        <div className="relative z-20 flex-none w-full flex flex-col justify-end">
-            
-            {/* CONTROL BUTTONS - Lower Z-Index so Player Tray can slide over it */}
-            <div className={`relative z-10 px-6 pb-2 w-full transition-all duration-[3000ms] ${isIdle ? 'opacity-30 hover:opacity-100' : 'opacity-100'}`}>
-                
-                {/* Dynamic Switch: Activate vs Resume/Stop */}
-                {!isCooldown ? (
-                    <button
-                        onMouseDown={startHold}
-                        onMouseUp={endHold}
-                        onMouseLeave={cancelHold}
-                        onTouchStart={startHold}
-                        onTouchEnd={endHold}
-                        onContextMenu={(e) => e.preventDefault()}
-                        className="w-full py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-cyan-950/30 text-cyan-500 border-cyan-500/50 shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:bg-cyan-500 hover:text-black hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] relative overflow-hidden select-none"
-                    >
-                        {/* Progress Fill for Hold-to-Stop */}
-                        <div 
-                            className="absolute inset-0 bg-red-600 z-0 transition-all duration-75 ease-linear opacity-50"
-                            style={{ width: `${holdProgress}%` }}
-                        ></div>
-
-                        {/* Button Content */}
-                        <div className="relative z-10 flex items-center gap-2">
-                            {holdProgress > 0 ? (
-                                <>
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 animate-pulse" viewBox="0 0 20 20" fill="currentColor">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
-                                    </svg>
-                                    <span>HOLD TO STOP</span>
-                                </>
-                            ) : (
-                                <>
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                                        <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                    ACTIVATE COOLDOWN
-                                </>
-                            )}
-                        </div>
-                    </button>
-                ) : (
-                    <div 
-                        className={`flex gap-4 transition-all duration-500 ${cooldownStage === 'BUTTONS' ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
-                    >
-                        <button
-                            onClick={() => setIsCooldown(false)}
-                            className="flex-1 py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-green-900/40 text-green-400 border-green-500/50 hover:bg-green-500 hover:text-black"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                            </svg>
-                            RESUME
-                        </button>
-                        <button
-                            onClick={() => handleFinishWorkout()}
-                            className="flex-1 py-3 rounded-xl font-bold tracking-widest uppercase transition-all duration-300 border flex items-center justify-center gap-2 bg-red-900/40 text-red-400 border-red-500/50 hover:bg-red-500 hover:text-black"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V4z" clipRule="evenodd" />
-                            </svg>
-                            STOP
-                        </button>
-                    </div>
-                )}
-            </div>
-
-            {/* Media Player - High Z-Index to allow Tray to overlap Cooldown */}
+        {/* --- FOOTER SECTION (Z-50) - PLAYER ONLY --- */}
+        <div className="relative z-50 flex-none w-full flex flex-col justify-end">
             <div className="w-full relative z-50">
                 <MediaPlayer 
                     isPlaying={isPlaying}
@@ -657,43 +832,47 @@ const App: React.FC = () => {
                     onNext={() => handleSkip('next')}
                     currentTrack={currentTrack}
                     onTrackSelect={handleTrackSelect}
-                    enabledServices={settings.enabledServices}
+                    onOpenLibrary={() => setShowLibraryModal(true)}
+                    shuffle={shuffle}
+                    onToggleShuffle={handleToggleShuffle}
+                    repeatMode={repeatMode}
+                    onToggleRepeat={handleToggleRepeat}
                 />
             </div>
         </div>
         
-        {/* FLOATING TEXT LAYER - MOVED TO ROOT FOR Z-INDEX */}
-        <div 
-            className={`
-                absolute bottom-[20%] left-0 w-full flex justify-center z-[60] pointer-events-none
-                transition-all duration-700 ease-out
-                ${cooldownStage === 'TEXT' 
-                    ? 'opacity-100 translate-y-0' 
-                    : cooldownStage === 'BUTTONS' 
-                        ? 'opacity-0 translate-y-[-20px]' 
-                        : 'opacity-0 translate-y-full' 
-                }
-            `}
-        >
-             <div className="flex items-center gap-3 bg-black/80 backdrop-blur-md px-6 py-2 rounded-full border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
-                 {/* Backward spinning icon */}
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-cyan-400 animate-spin-reverse" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                <span className="text-cyan-400 font-bold brand-font tracking-widest text-sm animate-pulse">COOLING DOWN...</span>
-             </div>
-             <style>{`
-                @keyframes spin-reverse {
-                    from { transform: rotate(360deg); }
-                    to { transform: rotate(0deg); }
-                }
-                .animate-spin-reverse {
-                    animation: spin-reverse 3s linear infinite;
-                }
-             `}</style>
-        </div>
+        {/* Floating Text: Cooldown Status (Run Mode Only) */}
+        {workoutMode === WorkoutMode.RUN && (
+            <div 
+                className={`
+                    absolute bottom-[20%] left-0 w-full flex justify-center z-[60] pointer-events-none
+                    transition-all duration-700 ease-out
+                    ${cooldownStage === 'TEXT' 
+                        ? 'opacity-100 translate-y-0' 
+                        : cooldownStage === 'BUTTONS' 
+                            ? 'opacity-0 translate-y-[-20px]' 
+                            : 'opacity-0 translate-y-full' 
+                    }
+                `}
+            >
+                 <div className="flex items-center gap-3 bg-black/80 backdrop-blur-md px-6 py-2 rounded-full border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.2)]">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-cyan-400 animate-spin-reverse" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12.0001 2.00024V4.00024M12.0001 20.0002V22.0002M4.92908 4.92917L6.34329 6.34338M17.6569 17.657L19.0712 19.0712M2.00012 12.0002H4.00012M20.0001 12.0002H22.0001M4.92908 19.0713L6.34329 17.6571M17.6569 6.34351L19.0712 4.9293" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    <span className="text-cyan-400 font-bold brand-font tracking-widest text-sm animate-pulse">COOLING DOWN...</span>
+                 </div>
+                 <style>{`
+                    @keyframes spin-reverse {
+                        from { transform: rotate(360deg); }
+                        to { transform: rotate(0deg); }
+                    }
+                    .animate-spin-reverse {
+                        animation: spin-reverse 3s linear infinite;
+                    }
+                 `}</style>
+            </div>
+        )}
 
-        {/* Overlays */}
         <SettingsModal 
           isOpen={showSettingsModal} 
           onClose={() => setShowSettingsModal(false)}
@@ -710,6 +889,7 @@ const App: React.FC = () => {
             onToggleEquip={handleToggleEquip}
             history={workoutHistory}
             onUpdateSession={handleUpdateSession}
+            onDeleteSession={handleDeleteSession}
         />
 
         <WorkoutSummary 
@@ -717,9 +897,24 @@ const App: React.FC = () => {
             onClose={() => setShowSummaryModal(false)}
             session={lastSession}
         />
+        
+        <MusicLibrary 
+          isOpen={showLibraryModal}
+          onClose={() => setShowLibraryModal(false)}
+          onTrackSelect={handleTrackSelect}
+          tracks={libraryTracks}
+          playlists={libraryPlaylists}
+          onAddTracks={handleAddTracks}
+          onCreatePlaylist={handleCreatePlaylist}
+          onAddToPlaylist={handleAddToPlaylist}
+          onDeleteTrack={handleDeleteTrack}
+          onRemoveFromPlaylist={handleRemoveFromPlaylist}
+          currentTrack={currentTrack}
+          isPlaying={isPlaying}
+        />
 
         {showToast && (
-          <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-xs z-[70] animate-bounce whitespace-nowrap">
+          <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg text-xs z-[100] animate-bounce whitespace-nowrap">
             {toastMessage}
           </div>
         )}

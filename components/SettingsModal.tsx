@@ -30,19 +30,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
       setLocalSettings(prev => ({ ...prev, inputSource: source }));
   };
 
-  const handleServiceToggle = (serviceId: string) => {
-    setLocalSettings(prev => {
-      const current = prev.enabledServices;
-      if (current.includes(serviceId)) {
-        // Prevent disabling all services - keep at least one
-        if (current.length <= 1) return prev; 
-        return { ...prev, enabledServices: current.filter(id => id !== serviceId) };
-      } else {
-        return { ...prev, enabledServices: [...current, serviceId] };
-      }
-    });
-  };
-
   const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value);
     if (val < localSettings.targetMax) {
@@ -278,6 +265,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                         <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-transform duration-300 ${localSettings.useGPS ? 'translate-x-6 bg-cyan-400' : 'translate-x-0 bg-gray-500'}`}></div>
                     </button>
                </div>
+
+               {/* Judge Controls Toggle */}
+               <div className="flex items-center justify-between p-3 bg-zinc-900/50 rounded-lg border border-zinc-800">
+                    <div>
+                        <span className="text-xs text-gray-300 font-bold uppercase block">Judge Controls</span>
+                        <span className="text-[9px] text-gray-500">Show Dev Tools on Mobile</span>
+                    </div>
+                    <button 
+                        onClick={() => handleToggle('showJudgeControls')}
+                        className={`w-12 h-6 rounded-full relative transition-colors duration-300 border ${localSettings.showJudgeControls ? 'bg-cyan-500/20 border-cyan-500' : 'bg-zinc-900 border-zinc-700'}`}
+                    >
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-transform duration-300 ${localSettings.showJudgeControls ? 'translate-x-6 bg-cyan-400' : 'translate-x-0 bg-gray-500'}`}></div>
+                    </button>
+               </div>
           </section>
           
           {/* --- UNITS --- */}
@@ -300,42 +301,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                 >
                     Metric
                 </button>
-             </div>
-          </section>
-
-          {/* --- SERVICES GRID --- */}
-          <section>
-             <label className="text-[10px] text-cyan-500 uppercase tracking-[0.2em] font-bold mb-3 block flex items-center gap-2">
-                <span className="w-8 h-[1px] bg-cyan-900"></span>
-                Data Links
-             </label>
-             <div className="grid grid-cols-2 gap-3">
-                {Object.values(DEMO_TRACKS).map((track) => {
-                const isEnabled = localSettings.enabledServices.includes(track.id);
-                return (
-                    <button
-                        key={track.id}
-                        onClick={() => handleServiceToggle(track.id)}
-                        className={`group relative overflow-hidden p-3 rounded-lg border transition-all duration-300 flex items-center gap-3 ${
-                            isEnabled 
-                            ? 'bg-zinc-900 border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.1)]' 
-                            : 'bg-zinc-950 border-zinc-800 opacity-60 grayscale hover:opacity-100 hover:border-zinc-700'
-                        }`}
-                    >
-                        {/* Status Light */}
-                        <div className={`w-2 h-2 rounded-full transition-colors duration-300 ${isEnabled ? 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]' : 'bg-zinc-700'}`}></div>
-                        
-                        <span className={`text-xs font-bold uppercase tracking-wide ${isEnabled ? 'text-white' : 'text-gray-500'}`}>
-                            {track.platform}
-                        </span>
-
-                        {/* Active Scanline Effect */}
-                        {isEnabled && (
-                             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-cyan-500/5 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
-                        )}
-                    </button>
-                );
-                })}
              </div>
           </section>
 

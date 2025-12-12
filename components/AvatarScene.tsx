@@ -1,3 +1,4 @@
+
 import React, { useRef, useMemo, ReactNode } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Sphere } from '@react-three/drei';
@@ -16,6 +17,7 @@ interface AvatarSceneProps {
   avatarUrl: string;
   targetMin: number;
   targetMax: number;
+  isCelebration?: boolean;
 }
 
 interface ErrorBoundaryProps {
@@ -27,8 +29,14 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-// Error Boundary to catch 3D Loading Errors (e.g., fetch failed)
+// Error Boundary to catch 3D Loading Errors
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  readonly props!: Readonly<ErrorBoundaryProps>;
   state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(_: any): ErrorBoundaryState {
@@ -47,7 +55,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-// Fallback Mesh if model fails to load
+// Fallback Mesh
 const FallbackAvatar: React.FC<{ color: string }> = ({ color }) => {
   const meshRef = useRef<THREE.Mesh>(null);
   useFrame((state) => {
@@ -69,63 +77,102 @@ const FallbackAvatar: React.FC<{ color: string }> = ({ color }) => {
   );
 };
 
-const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgnited: boolean; equippedItems: string[]; isPlaying: boolean; isStandby: boolean; avatarUrl: string; targetMin: number; targetMax: number }> = ({ color, mode, bpm, isIgnited, equippedItems, isPlaying, isStandby, avatarUrl, targetMin, targetMax }) => {
+const SceneContent: React.FC<{ 
+    color: string; 
+    mode: AppMode; 
+    bpm: number; 
+    isIgnited: boolean; 
+    equippedItems: string[]; 
+    isPlaying: boolean; 
+    isStandby: boolean; 
+    avatarUrl: string; 
+    targetMin: number; 
+    targetMax: number;
+    isCelebration?: boolean;
+}> = ({ color, mode, bpm, isIgnited, equippedItems, isPlaying, isStandby, avatarUrl, targetMin, targetMax, isCelebration }) => {
   const groupRef = useRef<THREE.Group>(null);
   
-  // Calculate Light Direction (Sun Position)
+  // Ref to track current spin velocity for smooth deceleration
+  const spinSpeedRef = useRef(0);
+  
   const lightPos = useMemo(() => new THREE.Vector3(5, 5, 5), []);
   const lightDir = useMemo(() => lightPos.clone().normalize(), [lightPos]);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (!groupRef.current) return;
     
-    // Freeze animation if paused and NOT in standby (Glitch pause)
     if (!isPlaying && !isStandby) return; 
 
     const t = state.clock.getElapsedTime();
 
-    // 1. Snap-to-Zone Orientation Logic
+    // 1. Orientation Logic
     let targetRotY = 0;
     let targetRotX = 0;
 
-    if (isStandby) {
-        // Standby Mode: Gentle idle drift
-        groupRef.current.rotation.y = Math.sin(t * 0.2) * 0.2; // Slow look left/right
-        groupRef.current.rotation.x = Math.cos(t * 0.3) * 0.05; // Very slight nod
-        groupRef.current.position.y = Math.sin(t * 1.0) * 0.1; // Gentle bob
-        
-        // Pulse Scale for standby
-        const targetScale = 0.8; 
-        groupRef.current.scale.set(targetScale, targetScale, targetScale);
-        return;
-    }
-
-    if (mode === AppMode.MOTIVATION) {
-        targetRotY = -0.5;
-        targetRotX = 0.1;
-    } else if (mode === AppMode.ZONE) {
-        targetRotY = 0;
-        targetRotX = 0;
-    } else if (mode === AppMode.COOLDOWN) {
-        targetRotY = 0;
-        targetRotX = 0.3; // Look down
-    } else {
-        // OVERDRIVE
-        targetRotY = 0.5;
+    if (isCelebration) {
+        // Accelerate spin
+        spinSpeedRef.current = THREE.MathUtils.lerp(spinSpeedRef.current, 5.0, 0.1); // Target 5.0 rad/s
         targetRotX = -0.2;
+    } else {
+        // Decelerate spin
+        spinSpeedRef.current = THREE.MathUtils.lerp(spinSpeedRef.current, 0, 0.05);
+        
+        // Define normal mode targets
+        if (isStandby) {
+            targetRotY = Math.sin(t * 0.2) * 0.2; 
+            targetRotX = Math.cos(t * 0.3) * 0.05; 
+        } else if (mode === AppMode.MOTIVATION) {
+            targetRotY = -0.5;
+            targetRotX = 0.1;
+        } else if (mode === AppMode.ZONE) {
+            targetRotY = 0;
+            targetRotX = 0;
+        } else if (mode === AppMode.COOLDOWN) {
+            targetRotY = 0;
+            targetRotX = 0.3; 
+        } else {
+            // OVERDRIVE
+            targetRotY = 0.5;
+            targetRotX = -0.2;
+        }
     }
 
-    const snapSpeed = 0.1;
-    groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotX, snapSpeed);
-    groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotY, snapSpeed);
+    // --- ROTATION BLENDING LOGIC ---
+    // Instead of switching modes, we blend the "Spin Velocity" with the "Alignment Force".
+    
+    // 1. Apply Spin Velocity
+    groupRef.current.rotation.y += spinSpeedRef.current * delta;
+
+    // 2. Calculate Shortest Path to Target
+    const current = groupRef.current.rotation.y;
+    let diff = (targetRotY - current) % (Math.PI * 2);
+    // Normalize diff to -PI to +PI for shortest path
+    if (diff !== diff % (Math.PI * 2)) diff = (diff + Math.PI * 2) % (Math.PI * 2); 
+    if (diff > Math.PI) diff -= Math.PI * 2;
+    if (diff < -Math.PI) diff += Math.PI * 2;
+
+    // 3. Apply Alignment Force based on Spin Speed
+    // When speed is high, alignment force is near 0.
+    // When speed drops, alignment force increases to 1.0 (full control).
+    const blendThreshold = 2.0;
+    const alignWeight = 1.0 - Math.min(1.0, Math.abs(spinSpeedRef.current) / blendThreshold);
+    const smoothWeight = alignWeight * alignWeight; // Quadratic easing for smoother transition
+
+    // Apply corrected rotation. 
+    // This is effectively: newRot = current + velocity*dt + (target-current)*factor*blend
+    groupRef.current.rotation.y += diff * 0.1 * smoothWeight;
+
+    // X Rotation is always simple lerp
+    groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, targetRotX, 0.1);
 
     // 2. Gentle Float
     groupRef.current.position.y = Math.sin(t * 1.5) * 0.1;
 
     // 3. Pulse Scale
-    const baseScale = 0.85;
-    const targetScale = isIgnited ? 1.2 : baseScale;
-    const currentScale = THREE.MathUtils.lerp(groupRef.current.scale.x, targetScale, 0.1);
+    const baseScale = 0.65;
+    const targetScale = (isIgnited || isCelebration) ? 0.75 : baseScale;
+    const finalScale = isStandby ? 0.6 : targetScale;
+    const currentScale = THREE.MathUtils.lerp(groupRef.current.scale.x, finalScale, 0.1);
     groupRef.current.scale.set(currentScale, currentScale, currentScale);
   });
 
@@ -142,26 +189,24 @@ const SceneContent: React.FC<{ color: string; mode: AppMode; bpm: number; isIgni
               equippedItems={equippedItems} 
               targetMin={targetMin}
               targetMax={targetMax}
+              isCelebration={isCelebration}
             />
          </ErrorBoundary>
       </group>
-      
-      {/* Light source for shader logic */}
       <directionalLight position={lightPos} intensity={1} />
-      {/* Ambient for standard materials (Jaw/Halo) */}
       <ambientLight intensity={0.5} />
     </>
   );
 };
 
-export const AvatarScene: React.FC<AvatarSceneProps> = ({ color, mode, bpm, isIgnited, equippedItems, isPlaying, isStandby = false, avatarUrl, targetMin, targetMax }) => {
+export const AvatarScene: React.FC<AvatarSceneProps> = (props) => {
   return (
     <Canvas 
         camera={{ position: [0, 0, 10], fov: 45 }} 
         gl={{ alpha: true, antialias: true }}
         className="w-full h-full pointer-events-none"
     >
-      <SceneContent color={color} mode={mode} bpm={bpm} isIgnited={isIgnited} equippedItems={equippedItems} isPlaying={isPlaying} isStandby={isStandby} avatarUrl={avatarUrl} targetMin={targetMin} targetMax={targetMax} />
+      <SceneContent {...props} />
     </Canvas>
   );
 };

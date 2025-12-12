@@ -12,6 +12,7 @@ interface DebugPanelProps {
   onAvatarSelect: (file: File) => void;
   unlockedItems: string[];
   toggleUnlock: (item: string) => void;
+  triggerManualMilestone: () => void;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -20,14 +21,10 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   bpm,
   setBpm,
   modeConfig,
-  onFileSelect,
-  onAvatarSelect,
   unlockedItems = [],
-  toggleUnlock
+  toggleUnlock,
+  triggerManualMilestone
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const avatarInputRef = useRef<HTMLInputElement>(null);
-
   if (!isOpen) return null;
 
   return (
@@ -66,46 +63,18 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
            </div>
         </div>
 
-        {/* Custom Avatar Upload */}
+        {/* Manual Triggers */}
         <div>
-          <div className="text-xs text-gray-400 mb-2 uppercase tracking-widest">Avatar Override</div>
+          <div className="text-xs text-gray-400 mb-2 uppercase tracking-widest">Event Simulators</div>
           <button 
-            onClick={() => avatarInputRef.current?.click()}
+            onClick={triggerManualMilestone}
             className="w-full py-3 bg-fuchsia-900/30 hover:bg-fuchsia-900/50 border border-fuchsia-500/50 text-xs text-fuchsia-300 uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clipRule="evenodd" />
+              <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
             </svg>
-            Upload Avatar (.GLB)
+            TRIGGER MILESTONE (TEST)
           </button>
-          <input 
-            type="file" 
-            accept=".glb,.gltf" 
-            className="hidden" 
-            ref={avatarInputRef}
-            onChange={(e) => e.target.files?.[0] && onAvatarSelect(e.target.files[0])}
-          />
-        </div>
-
-        {/* File Upload */}
-        <div>
-          <div className="text-xs text-gray-400 mb-2 uppercase tracking-widest">Custom Audio Source</div>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full py-3 bg-gray-800 hover:bg-gray-700 border border-gray-600 text-xs text-white uppercase tracking-wider rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-            </svg>
-            Upload .MP3
-          </button>
-          <input 
-            type="file" 
-            accept="audio/mp3,audio/*" 
-            className="hidden" 
-            ref={fileInputRef}
-            onChange={(e) => e.target.files?.[0] && onFileSelect(e.target.files[0])}
-          />
         </div>
       </div>
     </div>
