@@ -251,10 +251,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     
                     <div className="space-y-3">
                         {items.map(item => {
-                            // If Judge Controls force 'visor' (showVisor=true), treat it as Unlocked and Equipped
-                            const isVisorOverride = item.id === 'visor' && showVisor;
-                            const isUnlocked = unlockedItems.includes(item.id) || isVisorOverride;
-                            const isEquipped = equippedItems.includes(item.id) || isVisorOverride;
+                            const isUnlocked = unlockedItems.includes(item.id);
+                            const isEquipped = equippedItems.includes(item.id);
                             
                             return (
                                 <div 

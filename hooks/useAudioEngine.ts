@@ -1,16 +1,24 @@
 
-
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MODE_CONFIG } from '../constants';
-import { AppMode } from '../types';
+import { AppMode, AudioStabilityMode } from '../types';
 
-export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpeedup: boolean = true) => {
+export const useAudioEngine = (
+    mode: AppMode, 
+    onEnded?: () => void, 
+    overdriveSpeedup: boolean = true,
+    stabilityMode: AudioStabilityMode = AudioStabilityMode.AUTO
+) => {
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [realtimeRate, setRealtimeRate] = useState(1.0);
   const [volume, setVolume] = useState(1.0); // 0.0 to 1.0
+
+  // Battery State
+  const [isLowPower, setIsLowPower] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
@@ -18,8 +26,14 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
   const filterNodeRef = useRef<BiquadFilterNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   
-  // Ref for animation frame to handle playback rate interpolation
-  const rafRef = useRef<number | null>(null);
+  // Track Loading State Refs
+  const activeBlobUrlRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // Mobile Detection (Kept for reference or future heuristics)
+  const IS_MOBILE = useRef<boolean>(
+    typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  ).current;
 
   // Ref for onEnded callback to avoid stale closures/cycles
   const onEndedRef = useRef(onEnded);
@@ -27,13 +41,50 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
     onEndedRef.current = onEnded;
   }, [onEnded]);
 
-  // Determine effective playback rate based on settings
-  const getTargetPlaybackRate = (modeConfig: any) => {
-    if (mode === AppMode.OVERDRIVE && !overdriveSpeedup) {
-        return 1.0; // Force normal speed if overdrive speedup is disabled
+  // Battery Listener (For Auto Mode)
+  useEffect(() => {
+    if (typeof (navigator as any).getBattery === 'function') {
+        (navigator as any).getBattery().then((battery: any) => {
+             const updateBattery = () => {
+                 // Consider < 20% as low power
+                 setIsLowPower(battery.level < 0.20 && !battery.charging);
+             };
+             updateBattery();
+             battery.addEventListener('levelchange', updateBattery);
+             battery.addEventListener('chargingchange', updateBattery);
+        }).catch((e: any) => console.warn("Battery API error", e));
     }
+  }, []);
+
+  // Determine if we should enforce Stable Mode (1.0x speed)
+  const isStableModeActive = useMemo(() => {
+    if (stabilityMode === AudioStabilityMode.STABLE) return true;
+    if (stabilityMode === AudioStabilityMode.DYNAMIC) return false;
+    
+    // AUTO Mode Logic:
+    // If we detected low power via Battery API, enforce stable.
+    if (isLowPower) return true;
+    
+    // Fallback: Default to DYNAMIC (False) as requested for iOS/Others
+    // allowing user to manually toggle if needed.
+    return false;
+  }, [stabilityMode, isLowPower]);
+
+  // Determine effective playback rate based on settings
+  const getTargetPlaybackRate = useCallback((modeConfig: any) => {
+    // 1. Force Stable Mode (Battery Saver / Stability Setting)
+    if (isStableModeActive) {
+        return 1.0;
+    }
+
+    // 2. Overdrive Config Check
+    if (mode === AppMode.OVERDRIVE && !overdriveSpeedup) {
+        return 1.0; 
+    }
+
+    // 3. Normal Dynamic Speed
     return modeConfig.playbackRate;
-  };
+  }, [mode, overdriveSpeedup, isStableModeActive]);
 
   // Initialize Audio Context
   const initAudio = useCallback(() => {
@@ -45,7 +96,12 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
 
     const audio = new Audio();
     audio.crossOrigin = "anonymous";
-    audio.preservesPitch = false; // Key for the "slowing down" pitch effect
+    
+    // CRITICAL: Disable pitch preservation to allow performant "vinyl-like" speed changes
+    audio.preservesPitch = false; 
+    (audio as any).mozPreservesPitch = false;
+    (audio as any).webkitPreservesPitch = false;
+
     audioElementRef.current = audio;
 
     // Create Nodes
@@ -85,7 +141,7 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
     setRealtimeRate(initialRate);
 
     setIsReady(true);
-  }, [mode]); // Re-init if mode changes? No, init once. Mode effects handled in other effect.
+  }, [mode, getTargetPlaybackRate]);
 
   // Handle Volume Changes
   useEffect(() => {
@@ -95,41 +151,94 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
       }
   }, [volume]);
 
-  // Load Track
-  const loadTrack = useCallback((url: string, forcePlay = false) => {
+  // Load Track with Blob Buffering
+  const loadTrack = useCallback(async (url: string, forcePlay = false) => {
     if (!audioElementRef.current) initAudio();
-    if (audioElementRef.current) {
-      const wasPlaying = !audioElementRef.current.paused;
-      const shouldPlay = forcePlay || wasPlaying;
-
-      audioElementRef.current.src = url;
-      audioElementRef.current.load();
-      
-      // Ensure the correct rate is applied after load
-      const config = MODE_CONFIG[mode];
-      const rate = getTargetPlaybackRate(config);
-      audioElementRef.current.playbackRate = rate;
-      setRealtimeRate(rate);
-
-      if (shouldPlay) {
-        audioElementRef.current.play().catch(e => {
-            // Ignore AbortError which happens when switching tracks quickly
-            if (e.name !== 'AbortError') {
-                console.error("Play failed", e);
-            }
-        });
-        setIsPlaying(true);
-      } else {
-        setIsPlaying(false);
-      }
+    
+    // Abort previous fetch if active
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
     }
-  }, [initAudio, mode, overdriveSpeedup]);
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
+    setIsLoading(true);
+
+    try {
+        let srcToPlay = url;
+        
+        // If it's a remote URL, download it to Blob to ensure smooth streaming/seeking behavior
+        if (url.startsWith('http') || url.startsWith('https')) {
+            const response = await fetch(url, { signal });
+            if (!response.ok) throw new Error(`Fetch failed: ${response.statusText}`);
+            const blob = await response.blob();
+            
+            if (signal.aborted) return;
+
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // Clean up old blob to free memory
+            if (activeBlobUrlRef.current) {
+                URL.revokeObjectURL(activeBlobUrlRef.current);
+            }
+            activeBlobUrlRef.current = blobUrl;
+            srcToPlay = blobUrl;
+        }
+
+        if (audioElementRef.current) {
+            // Apply src
+            audioElementRef.current.src = srcToPlay;
+            
+            // Re-apply correct rate immediately
+            const config = MODE_CONFIG[mode];
+            const rate = getTargetPlaybackRate(config);
+            audioElementRef.current.playbackRate = rate;
+            setRealtimeRate(rate);
+
+            if (forcePlay) {
+                // Resume context if needed
+                if (audioContextRef.current?.state === 'suspended') {
+                    await audioContextRef.current.resume();
+                }
+                
+                try {
+                    await audioElementRef.current.play();
+                    setIsPlaying(true);
+                } catch (e) {
+                    if ((e as Error).name !== 'AbortError') console.error("Play failed", e);
+                }
+            } else {
+                setIsPlaying(false);
+            }
+        }
+    } catch (e: any) {
+        if (e.name !== 'AbortError') {
+            console.error("Track load error:", e);
+        }
+    } finally {
+        if (!signal.aborted) {
+            setIsLoading(false);
+        }
+    }
+  }, [initAudio, mode, getTargetPlaybackRate]);
+
+  // Cleanup Blob on unmount
+  useEffect(() => {
+      return () => {
+          if (activeBlobUrlRef.current) {
+              URL.revokeObjectURL(activeBlobUrlRef.current);
+          }
+          if (abortControllerRef.current) {
+              abortControllerRef.current.abort();
+          }
+      };
+  }, []);
 
   // Play/Pause
   const togglePlay = useCallback(async () => {
     if (!audioContextRef.current) initAudio();
     
-    // Resume context if suspended (browser policy)
+    // Resume context if suspended
     if (audioContextRef.current?.state === 'suspended') {
       await audioContextRef.current.resume();
     }
@@ -147,80 +256,47 @@ export const useAudioEngine = (mode: AppMode, onEnded?: () => void, overdriveSpe
     }
   }, [initAudio]);
 
-  // Apply Mode Effects (Filter & Speed) with Smooth Ramping
+  // Apply Mode Effects (Filter & Speed)
   useEffect(() => {
     if (!audioElementRef.current || !filterNodeRef.current || !audioContextRef.current) return;
 
     const config = MODE_CONFIG[mode];
     const ctx = audioContextRef.current;
     const now = ctx.currentTime;
-    const RAMP_DURATION = 3; // 3 seconds transition
+    const RAMP_DURATION = 3; // 3 seconds transition for filter
 
-    // 1. Smoothly transition filter frequency (Linear Ramp)
+    // 1. FILTER: Smooth Exponential Ramp
+    // This runs on BOTH Mobile and Desktop to ensure the "Muffled" effect in Phase 1 works
     const filter = filterNodeRef.current;
-    
-    // Cancel any scheduled future changes to avoid conflicts
     filter.frequency.cancelScheduledValues(now);
-    // Anchor the start point to the current value to prevent jumping
     filter.frequency.setValueAtTime(filter.frequency.value, now);
-    // Ramp to target
-    filter.frequency.linearRampToValueAtTime(config.filterFreq, now + RAMP_DURATION);
+    filter.frequency.setTargetAtTime(config.filterFreq, now, RAMP_DURATION / 4);
 
-    // 2. Adjust Playback Rate with custom interpolation loop
-    const audio = audioElementRef.current;
-    const startRate = audio.playbackRate;
+    // 2. PLAYBACK RATE: Instant Change
     const targetRate = getTargetPlaybackRate(config);
     
-    // If we are already at target (within tolerance), just update state and return
-    if (Math.abs(startRate - targetRate) < 0.001) {
-        setRealtimeRate(targetRate);
-        return;
+    // Safety check for pitch preservation flags
+    if (audioElementRef.current.preservesPitch !== false) {
+       audioElementRef.current.preservesPitch = false;
+       (audioElementRef.current as any).webkitPreservesPitch = false;
     }
 
-    const startTime = performance.now();
-    
-    // Cancel previous animation loop if exists
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-    }
+    audioElementRef.current.playbackRate = targetRate;
+    setRealtimeRate(targetRate);
 
-    const animateRate = (currentTimeMs: number) => {
-      const elapsed = (currentTimeMs - startTime) / 1000; // seconds
-      const progress = Math.min(elapsed / RAMP_DURATION, 1);
-      
-      // Linear interpolation
-      const currentNewRate = startRate + (targetRate - startRate) * progress;
-      
-      if (audioElementRef.current) {
-        audioElementRef.current.playbackRate = currentNewRate;
-      }
-      setRealtimeRate(currentNewRate);
-
-      if (progress < 1) {
-        rafRef.current = requestAnimationFrame(animateRate);
-      }
-    };
-
-    rafRef.current = requestAnimationFrame(animateRate);
-
-    // Cleanup RAF on unmount or effect re-run
-    return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
-    };
-
-  }, [mode, overdriveSpeedup]);
+  }, [mode, getTargetPlaybackRate]);
 
   return {
     isReady,
     isPlaying,
+    isLoading, 
     currentTime,
     duration,
-    currentRate: realtimeRate, // Expose the animated value
+    currentRate: realtimeRate, 
     volume,
     setVolume,
     togglePlay,
-    loadTrack
+    loadTrack,
+    isStableModeActive
   };
 };

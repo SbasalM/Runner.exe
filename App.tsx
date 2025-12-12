@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource, WorkoutSession, Playlist } from './types';
+import { AppMode, SongMetadata, WorkoutMode, UnitSystem, Settings, InputSource, WorkoutSession, Playlist, AudioStabilityMode } from './types';
 import { BPM_TARGET_LOW, BPM_TARGET_HIGH, MODE_CONFIG, SKULL_MODEL_URL, DEMO_PLAYLIST, DEMO_TRACKS } from './constants';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import { useRunEngine } from './hooks/useRunEngine';
@@ -40,7 +40,39 @@ const App: React.FC = () => {
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   
+  // --- LIBRARY STATE (Persisted) ---
+  const [libraryTracks, setLibraryTracks] = useState<SongMetadata[]>(() => {
+    try {
+      const saved = localStorage.getItem('cp_library_tracks');
+      return saved ? JSON.parse(saved) : Object.values(DEMO_TRACKS);
+    } catch {
+      return Object.values(DEMO_TRACKS);
+    }
+  });
+
+  const [libraryPlaylists, setLibraryPlaylists] = useState<Playlist[]>(() => {
+    try {
+        const saved = localStorage.getItem('cp_library_playlists');
+        if (saved) return JSON.parse(saved);
+    } catch {}
+    
+    return [{
+        id: 'demo-playlist-1',
+        name: 'CYBER_CORE_DEMO',
+        tracks: DEMO_PLAYLIST,
+        isSystem: true
+    }];
+  });
+
   // Playback State
+  // Active Queue now initializes from the first available playlist (likely hydrated)
+  const [activeQueue, setActiveQueue] = useState<SongMetadata[]>(() => {
+     if (libraryPlaylists.length > 0 && libraryPlaylists[0].tracks.length > 0) {
+         return libraryPlaylists[0].tracks;
+     }
+     return Object.values(DEMO_TRACKS);
+  });
+
   const [shuffle, setShuffle] = useState(false);
   const [shuffledTracks, setShuffledTracks] = useState<SongMetadata[]>([]);
   const [repeatMode, setRepeatMode] = useState<'off' | 'all' | 'one'>('off');
@@ -63,6 +95,7 @@ const App: React.FC = () => {
     sessionDuration: 30, 
     slugStart: true,
     overdriveSpeedup: true,
+    audioStabilityMode: AudioStabilityMode.AUTO, // Default to AUTO
     useGPS: false,
     gestureControlEnabled: false,
     showJudgeControls: true
@@ -106,22 +139,102 @@ const App: React.FC = () => {
   const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isStopTriggeredRef = useRef(false);
 
-  // --- LIBRARY STATE ---
-  const [libraryTracks, setLibraryTracks] = useState<SongMetadata[]>(Object.values(DEMO_TRACKS));
-  const [libraryPlaylists, setLibraryPlaylists] = useState<Playlist[]>([
-    {
-        id: 'demo-playlist-1',
-        name: 'CYBER_CORE_DEMO',
-        tracks: DEMO_PLAYLIST,
-        isSystem: true
-    }
-  ]);
-
   useEffect(() => {
     if (currentTrack) {
         localStorage.setItem('cp_last_track', JSON.stringify(currentTrack));
     }
   }, [currentTrack]);
+
+  // Persist Library
+  useEffect(() => {
+    localStorage.setItem('cp_library_tracks', JSON.stringify(libraryTracks));
+  }, [libraryTracks]);
+
+  useEffect(() => {
+    localStorage.setItem('cp_library_playlists', JSON.stringify(libraryPlaylists));
+  }, [libraryPlaylists]);
+
+  // --- METADATA HYDRATION EFFECT ---
+  // Background task to fetch real ID3 tags for the demo tracks
+  useEffect(() => {
+      const hydrateDemoTracks = async () => {
+          if (!(window as any).jsmediatags) return;
+
+          // List of IDs to check (demo tracks)
+          const demoIds = Object.values(DEMO_TRACKS).map(t => t.id);
+          const updates: Record<string, Partial<SongMetadata>> = {};
+          let hasUpdates = false;
+
+          for (const trackId of demoIds) {
+              const trackConfig = Object.values(DEMO_TRACKS).find(t => t.id === trackId);
+              if (!trackConfig) continue;
+
+              // Check if we already have updated metadata in the current library state
+              // This simple check assumes if the name differs from default, it's updated.
+              // But for safety, we'll run the check to ensure consistency.
+              
+              try {
+                  const response = await fetch(trackConfig.source);
+                  const blob = await response.blob();
+                  
+                  await new Promise<void>((resolve) => {
+                      (window as any).jsmediatags.read(blob, {
+                          onSuccess: (tag: any) => {
+                              const { title, artist, album } = tag.tags;
+                              // Only update if we found valid data
+                              if (title || artist) {
+                                  updates[trackId] = {
+                                      name: title || trackConfig.name,
+                                      artist: artist || trackConfig.artist,
+                                      album: album || trackConfig.album
+                                  };
+                                  hasUpdates = true;
+                              }
+                              resolve();
+                          },
+                          onError: (error: any) => {
+                              resolve();
+                          }
+                      });
+                  });
+              } catch (e) {
+                  console.warn(`Failed to hydrate metadata for ${trackId}`);
+              }
+          }
+
+          if (hasUpdates) {
+              // Batch Update Library
+              setLibraryTracks(prev => prev.map(t => {
+                  if (t.id && updates[t.id]) return { ...t, ...updates[t.id] };
+                  return t;
+              }));
+
+              // Batch Update Playlists
+              setLibraryPlaylists(prev => prev.map(p => ({
+                  ...p,
+                  tracks: p.tracks.map(t => {
+                      if (t.id && updates[t.id]) return { ...t, ...updates[t.id] };
+                      return t;
+                  })
+              })));
+
+              // Update Current Track if playing one of them
+              setCurrentTrack(prev => {
+                  if (prev && prev.id && updates[prev.id]) {
+                      return { ...prev, ...updates[prev.id] };
+                  }
+                  return prev;
+              });
+              
+              // NOTE: Toast notification removed as requested
+              // triggerToast("Library Metadata Synced");
+          }
+      };
+
+      // Delay hydration slightly to prioritize UI render
+      const timer = setTimeout(hydrateDemoTracks, 1000);
+      return () => clearTimeout(timer);
+  }, []);
 
   const resetIdleTimer = () => {
     setIsIdle(false);
@@ -219,7 +332,7 @@ const App: React.FC = () => {
     }
   }, [currentMode, workoutMode]);
 
-  const { isPlaying, togglePlay, loadTrack, volume, setVolume } = useAudioEngine(currentMode, onTrackEnd, settings.overdriveSpeedup);
+  const { isPlaying, togglePlay, loadTrack, volume, setVolume, isLoading, isStableModeActive } = useAudioEngine(currentMode, onTrackEnd, settings.overdriveSpeedup, settings.audioStabilityMode);
   
   useEffect(() => {
     if (currentTrack && !isPlaying) {
@@ -397,14 +510,52 @@ const App: React.FC = () => {
 
   const handleFileSelect = (file: File) => {
     const objectUrl = URL.createObjectURL(file);
-    setCurrentTrack({ 
-      id: uuidv4(),
-      name: file.name.replace(/\.[^/.]+$/, ""), 
-      artist: "Local Upload",
-      album: "User Device",
-      source: objectUrl 
-    });
-    loadTrack(objectUrl);
+    let trackName = file.name.replace(/\.[^/.]+$/, "");
+    let artist = "Local Upload";
+    let album = "User Device";
+
+    if ((window as any).jsmediatags) {
+         (window as any).jsmediatags.read(file, {
+             onSuccess: (tag: any) => {
+                 if (tag.tags.title) trackName = tag.tags.title;
+                 if (tag.tags.artist) artist = tag.tags.artist;
+                 if (tag.tags.album) album = tag.tags.album;
+                 
+                 const newTrack = { 
+                    id: uuidv4(),
+                    name: trackName, 
+                    artist: artist,
+                    album: album,
+                    source: objectUrl 
+                };
+                setCurrentTrack(newTrack);
+                loadTrack(objectUrl);
+             },
+             onError: () => {
+                 // Fallback if parsing fails
+                 const newTrack = { 
+                    id: uuidv4(),
+                    name: trackName, 
+                    artist: artist,
+                    album: album,
+                    source: objectUrl 
+                };
+                setCurrentTrack(newTrack);
+                loadTrack(objectUrl);
+             }
+         });
+    } else {
+        // Fallback if library missing
+        const newTrack = { 
+            id: uuidv4(),
+            name: trackName, 
+            artist: artist,
+            album: album,
+            source: objectUrl 
+        };
+        setCurrentTrack(newTrack);
+        loadTrack(objectUrl);
+    }
   };
 
   const handleAvatarSelect = (file: File) => {
@@ -413,8 +564,23 @@ const App: React.FC = () => {
     triggerToast("Avatar System Updated");
   };
 
-  const handleTrackSelect = (track: SongMetadata, forcePlay = false) => {
+  const handleTrackSelect = (track: SongMetadata, forcePlay = false, newQueue?: SongMetadata[]) => {
     setCurrentTrack(track);
+    
+    // Contextual Queue Update
+    if (newQueue) {
+        setActiveQueue(newQueue);
+        if (shuffle) {
+            // Reshuffle the new queue if shuffle is active
+            const newShuffled = [...newQueue];
+            for (let i = newShuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newShuffled[i], newShuffled[j]] = [newShuffled[j], newShuffled[i]];
+            }
+            setShuffledTracks(newShuffled);
+        }
+    }
+    
     loadTrack(track.source, forcePlay);
   };
 
@@ -460,7 +626,8 @@ const App: React.FC = () => {
     setShuffle(prev => {
         const nextState = !prev;
         if (nextState) {
-            const newShuffled = [...libraryTracks];
+            // Shuffle the ACTIVE QUEUE instead of libraryTracks
+            const newShuffled = [...activeQueue];
             for (let i = newShuffled.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
                 [newShuffled[i], newShuffled[j]] = [newShuffled[j], newShuffled[i]];
@@ -476,7 +643,8 @@ const App: React.FC = () => {
   };
 
   const handleSkip = (direction: 'next' | 'prev', forcePlay = false) => {
-    const list = shuffle && shuffledTracks.length > 0 ? shuffledTracks : libraryTracks;
+    // Use ACTIVE QUEUE instead of libraryTracks
+    const list = shuffle && shuffledTracks.length > 0 ? shuffledTracks : activeQueue;
     
     if (!currentTrack || list.length === 0) return;
     
@@ -499,9 +667,11 @@ const App: React.FC = () => {
         
         nextTrack = list[newIndex];
     } else {
+        // Fallback: Just play first track if current track isn't in active queue
         nextTrack = list[0];
     }
     
+    // We don't change queue on skip, just track
     handleTrackSelect(nextTrack, forcePlay);
   };
 
@@ -515,7 +685,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     skipRef.current = handleSkip;
-  }, [handleSkip, libraryTracks, shuffledTracks, currentTrack, shuffle, repeatMode]);
+  }, [handleSkip, activeQueue, shuffledTracks, currentTrack, shuffle, repeatMode]);
 
   const handleTabSwitch = (newMode: WorkoutMode) => {
     if (newMode === workoutMode) return;
@@ -644,6 +814,9 @@ const App: React.FC = () => {
           ...playlist,
           tracks: playlist.tracks.filter(t => t.id !== trackId)
       })));
+      
+      // Update active queue if deleted track was in it
+      setActiveQueue(prev => prev.filter(t => t.id !== trackId));
 
       if (currentTrack?.id === trackId && isPlaying) {
           togglePlay();
@@ -780,6 +953,7 @@ const App: React.FC = () => {
                 // NEW: Pass explicit workout mode to avoid glitches
                 workoutMode={workoutMode}
                 showVisor={showVisor}
+                isEcoMode={isStableModeActive} // NEW: Pass Stable State
             />
             
             {workoutMode === WorkoutMode.RUN && (
@@ -860,8 +1034,8 @@ const App: React.FC = () => {
                 <MediaPlayer 
                     isPlaying={isPlaying}
                     onPlayPause={handleGlobalPlayPause}
-                    onPrev={() => handleSkip('prev')}
-                    onNext={() => handleSkip('next')}
+                    onPrev={() => handleSkip('prev', isPlaying)}
+                    onNext={() => handleSkip('next', isPlaying)}
                     currentTrack={currentTrack}
                     onTrackSelect={handleTrackSelect}
                     onOpenLibrary={() => setShowLibraryModal(true)}
@@ -869,6 +1043,7 @@ const App: React.FC = () => {
                     onToggleShuffle={handleToggleShuffle}
                     repeatMode={repeatMode}
                     onToggleRepeat={handleToggleRepeat}
+                    isLoading={isLoading} // NEW PROP
                 />
             </div>
         </div>
@@ -939,7 +1114,7 @@ const App: React.FC = () => {
         <MusicLibrary 
           isOpen={showLibraryModal}
           onClose={() => setShowLibraryModal(false)}
-          onTrackSelect={handleTrackSelect}
+          onTrackSelect={(track, queue) => handleTrackSelect(track, false, queue)}
           tracks={libraryTracks}
           playlists={libraryPlaylists}
           onAddTracks={handleAddTracks}

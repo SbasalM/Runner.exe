@@ -21,6 +21,12 @@ export enum InputSource {
   TIMER = 'TIMER'
 }
 
+export enum AudioStabilityMode {
+  AUTO = 'AUTO',       // Battery < 20% ? Stable : Dynamic
+  STABLE = 'STABLE',   // Force 1.0x (Battery Saver)
+  DYNAMIC = 'DYNAMIC'  // Allow Speed Ramping (High Perf)
+}
+
 export interface Settings {
   units: UnitSystem;
   targetMin: number;
@@ -34,6 +40,7 @@ export interface Settings {
   
   // Global Audio Settings
   overdriveSpeedup: boolean; // Allow playback rate increase
+  audioStabilityMode: AudioStabilityMode; // NEW: Stability Control
 
   // Run Settings
   useGPS: boolean; // Use Real GPS for distance/pace

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { SongMetadata, Playlist } from '../types';
 import { v4 as uuidv4 } from 'uuid';
@@ -5,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 interface MusicLibraryProps {
   isOpen: boolean;
   onClose: () => void;
-  onTrackSelect: (track: SongMetadata) => void;
+  onTrackSelect: (track: SongMetadata, queue?: SongMetadata[]) => void;
   tracks: SongMetadata[];
   playlists: Playlist[];
   onAddTracks: (newTracks: SongMetadata[]) => void;
@@ -38,18 +39,18 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
   const [trackToAdd, setTrackToAdd] = useState<SongMetadata | null>(null);
+  const [isProcessingFiles, setIsProcessingFiles] = useState(false);
   
   // Hold-to-Load State
   const [holdingItemId, setHoldingItemId] = useState<string | null>(null);
-  const [holdProgress, setHoldProgress] = useState(0);
-  const holdTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const holdCompleteRef = useRef(false);
-  const ignoreClickRef = useRef(false); // New ref to prevent click after hold
+  const [isHolding, setIsHolding] = useState(false);
+  
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const itemsToPlayRef = useRef<SongMetadata[]>([]);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Grouping logic for Artists/Albums
+  // Grouping logic
   const groupedData = useMemo(() => {
     const artists: Record<string, SongMetadata[]> = {};
     const albums: Record<string, SongMetadata[]> = {};
@@ -68,48 +69,54 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      setIsProcessingFiles(true);
       const fileList = Array.from(e.target.files) as File[];
       const uniqueNewTracks: SongMetadata[] = [];
       
-      // Default metadata for imports since we can't parse ID3 tags purely in browser without heavy libs
-      // Note: Grouping logic below automatically handles these if user updates them later,
-      // or if we had a metadata parser.
-      const defaultArtist = 'Local Upload';
-      const defaultAlbum = 'Unknown Album';
-
-      fileList.forEach(file => {
+      for (const file of fileList) {
           const name = file.name.replace(/\.[^/.]+$/, "");
           
-          // Deduplication Logic:
-          // Check if this specific combination (Name + Artist + Album) already exists in the library
-          const exists = tracks.some(t => 
-              t.name === name && 
-              (t.artist === defaultArtist) && 
-              (t.album === defaultAlbum)
-          );
-          
-          // Also check against the batch we are currently processing to avoid duplicates within the upload selection
-          const inBatch = uniqueNewTracks.some(t => t.name === name);
-
-          if (!exists && !inBatch) {
-              uniqueNewTracks.push({
-                  id: uuidv4(),
-                  name: name,
-                  artist: defaultArtist,
-                  album: defaultAlbum,
-                  source: URL.createObjectURL(file)
+          const extractMetadata = (): Promise<{title?: string, artist?: string, album?: string}> => {
+              return new Promise((resolve) => {
+                  if ((window as any).jsmediatags) {
+                      (window as any).jsmediatags.read(file, {
+                          onSuccess: (tag: any) => {
+                              resolve({
+                                  title: tag.tags.title,
+                                  artist: tag.tags.artist,
+                                  album: tag.tags.album
+                              });
+                          },
+                          onError: (error: any) => {
+                              console.warn("Metadata read error:", error);
+                              resolve({});
+                          }
+                      });
+                  } else {
+                      resolve({});
+                  }
               });
-          }
-      });
+          };
+
+          const metadata = await extractMetadata();
+          
+          const newTrack: SongMetadata = {
+              id: uuidv4(),
+              name: metadata.title || name,
+              artist: metadata.artist || 'Local Upload',
+              album: metadata.album || 'Unknown Album',
+              source: URL.createObjectURL(file)
+          };
+
+          uniqueNewTracks.push(newTrack);
+      }
 
       if (uniqueNewTracks.length > 0) {
         onAddTracks(uniqueNewTracks);
-      } else {
-        // Optional: Could trigger a toast here saying "Duplicates skipped"
-        console.log("No new tracks added (duplicates skipped).");
       }
+      setIsProcessingFiles(false);
     }
   };
 
@@ -136,49 +143,27 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
 
   // --- GLOBAL HOLD TO LOAD LOGIC ---
   const handleHoldStart = (id: string, tracksToLoad: SongMetadata[]) => {
-    if (holdTimerRef.current) clearInterval(holdTimerRef.current);
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
     
     setHoldingItemId(id);
-    setHoldProgress(0);
-    holdCompleteRef.current = false;
-    ignoreClickRef.current = false;
+    setIsHolding(true);
     itemsToPlayRef.current = tracksToLoad;
 
-    const startTime = Date.now();
-    const duration = 1000; // 1.0s Duration
-
-    holdTimerRef.current = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const progress = Math.min((elapsed / duration) * 100, 100);
-        setHoldProgress(progress);
-
-        if (progress >= 100 && !holdCompleteRef.current) {
-            holdCompleteRef.current = true;
-            ignoreClickRef.current = true; // Action triggered, ignore subsequent click
-            if (holdTimerRef.current) clearInterval(holdTimerRef.current);
-            
-            // Execute Load
-            if (itemsToPlayRef.current && itemsToPlayRef.current.length > 0) {
-                onTrackSelect(itemsToPlayRef.current[0]);
-                // Visual feedback delay before closing
-                setTimeout(() => {
-                    onClose();
-                    setHoldingItemId(null);
-                    setHoldProgress(0);
-                }, 200);
-            }
+    holdTimerRef.current = setTimeout(() => {
+        if (itemsToPlayRef.current && itemsToPlayRef.current.length > 0) {
+            onTrackSelect(itemsToPlayRef.current[0], itemsToPlayRef.current);
+            setTimeout(() => {
+                onClose();
+                handleHoldEnd(); 
+            }, 200);
         }
-    }, 16);
+    }, 1000);
   };
 
   const handleHoldEnd = () => {
-    if (holdTimerRef.current) clearInterval(holdTimerRef.current);
-    if (!holdCompleteRef.current) {
-        setHoldProgress(0);
-        setHoldingItemId(null);
-    }
-    // Note: We do NOT reset ignoreClickRef here yet, it must persist until onClick fires
-    holdCompleteRef.current = false;
+    if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+    setIsHolding(false);
+    setHoldingItemId(null); 
   };
 
   // --- SMART MARQUEE COMPONENT ---
@@ -192,20 +177,13 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
             if (containerRef.current && measureRef.current) {
                 const containerWidth = containerRef.current.clientWidth;
                 const textWidth = measureRef.current.offsetWidth;
-                // Add a small buffer (1px) to avoid rounding jitter. 
-                // Only scroll if text is strictly larger.
                 setIsOverflowing(textWidth > containerWidth + 1);
             }
         };
 
-        // Check initially
         checkOverflow();
-
-        // Re-check on resize or if layout shifts (ResizeObserver is safer than window.resize)
         const observer = new ResizeObserver(() => checkOverflow());
         if (containerRef.current) observer.observe(containerRef.current);
-        
-        // Safety timeout for initial render layout settlement (font loading, modal animation)
         const timer = setTimeout(checkOverflow, 200);
 
         return () => {
@@ -216,7 +194,6 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
 
     return (
         <div ref={containerRef} className={`w-full relative ${className ?? ''}`}>
-            {/* Invisible measurement element: Absolute so it doesn't affect layout, but measures true text width */}
             <span ref={measureRef} className="absolute top-0 left-0 opacity-0 pointer-events-none whitespace-nowrap z-[-1]">
                 {text}
             </span>
@@ -309,14 +286,14 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
         {/* Content Area */}
         <div className="flex-1 overflow-hidden relative bg-black/50">
           
-             {/* PLAYLISTS TAB: Master-Detail Slider */}
+             {/* PLAYLISTS TAB */}
              {activeTab === 'PLAYLISTS' && (
                <div className="w-full h-full relative overflow-hidden">
                    <div 
                       className="flex w-[200%] h-full transition-transform duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]"
                       style={{ transform: selectedPlaylistId ? 'translateX(-50%)' : 'translateX(0)' }}
                    >
-                        {/* LEFT PANEL: Playlist List (Master) */}
+                        {/* Playlist List */}
                         <div className="w-1/2 h-full overflow-y-auto custom-scrollbar p-6">
                             <button 
                                 onClick={() => setIsCreatingPlaylist(true)}
@@ -344,45 +321,33 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {playlists.map(playlist => (
-                                <div
-                                    key={playlist.id}
-                                    className="relative group"
-                                    onMouseDown={() => handleHoldStart(playlist.id, playlist.tracks)}
-                                    onMouseUp={handleHoldEnd}
-                                    onMouseLeave={handleHoldEnd}
-                                    onTouchStart={() => handleHoldStart(playlist.id, playlist.tracks)}
-                                    onTouchEnd={handleHoldEnd}
-                                    onContextMenu={(e) => e.preventDefault()} // Prevent context menu on long press
-                                    onClick={() => {
-                                        if (!ignoreClickRef.current) setSelectedPlaylistId(playlist.id);
-                                    }}
-                                >
                                     <button
-                                        className={`w-full relative overflow-hidden text-left p-4 rounded-xl border transition-all duration-300 bg-zinc-900 ${holdingItemId === playlist.id ? 'border-cyan-500 scale-[0.98]' : 'border-zinc-800 hover:border-fuchsia-500/50 hover:bg-zinc-800'}`}
+                                        key={playlist.id}
+                                        className={`w-full relative overflow-hidden text-left p-4 rounded-xl border transition-all duration-300 bg-zinc-900 group ${holdingItemId === playlist.id ? 'border-cyan-500 scale-[0.98]' : 'border-zinc-800 hover:border-fuchsia-500/50 hover:bg-zinc-800'}`}
+                                        onMouseDown={() => handleHoldStart(playlist.id, playlist.tracks)}
+                                        onMouseUp={handleHoldEnd}
+                                        onMouseLeave={handleHoldEnd}
+                                        onTouchStart={() => handleHoldStart(playlist.id, playlist.tracks)}
+                                        onTouchEnd={handleHoldEnd}
+                                        onContextMenu={(e) => e.preventDefault()}
+                                        onClick={() => setSelectedPlaylistId(playlist.id)}
                                     >
-                                        {/* Hold Progress Background */}
-                                        {holdingItemId === playlist.id && (
-                                            <div 
-                                                className="absolute inset-0 bg-cyan-900/30 transition-all duration-75 ease-linear z-0"
-                                                style={{ width: `${holdProgress}%` }}
-                                            ></div>
-                                        )}
+                                        <div 
+                                            className={`absolute inset-0 bg-cyan-900/30 z-0 origin-left ${holdingItemId === playlist.id && isHolding ? 'transition-transform duration-[1000ms] ease-linear scale-x-100' : 'transition-none scale-x-0'}`}
+                                        ></div>
                                         
-                                        <div className="relative z-10">
-                                            {/* REMOVED HOVER ARROW AS REQUESTED */}
-                                            
+                                        <div className="relative z-10 pointer-events-none">
                                             <div className="mb-1 text-white brand-font font-bold text-lg">
                                                 <MarqueeTitle text={playlist.name} />
                                             </div>
                                             <div className="text-[10px] font-mono text-gray-500">{playlist.tracks.length} TRACKS // ID: {playlist.id.slice(0,4)}</div>
                                         </div>
                                     </button>
-                                </div>
                                 ))}
                             </div>
                         </div>
 
-                        {/* RIGHT PANEL: Playlist Details (Detail) */}
+                        {/* Playlist Details */}
                         <div className="w-1/2 h-full flex flex-col bg-zinc-950/50">
                             {selectedPlaylist && (
                                 <>
@@ -403,7 +368,6 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
                                         </div>
                                     </div>
 
-                                    {/* TRACK LIST */}
                                     <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
                                         {selectedPlaylist.tracks.length === 0 ? (
                                             <div className="h-40 flex flex-col items-center justify-center text-zinc-600 font-mono text-sm border border-zinc-800 border-dashed rounded-xl">
@@ -417,7 +381,7 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
                                                     return (
                                                         <div 
                                                             key={`${track.id}-${idx}`}
-                                                            onClick={() => { onTrackSelect(track); onClose(); }}
+                                                            onClick={() => { onTrackSelect(track, selectedPlaylist.tracks); onClose(); }}
                                                             className={`group flex items-center gap-3 p-3 rounded-lg cursor-pointer border transition-all ${
                                                                 active 
                                                                 ? 'bg-fuchsia-900/20 border-fuchsia-500/50' 
@@ -449,7 +413,6 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
                                         )}
                                     </div>
 
-                                    {/* HOLD TO LOAD BUTTON (Inside Details) */}
                                     <div className="p-6 bg-zinc-950 border-t border-zinc-800">
                                         <button
                                             disabled={selectedPlaylist.tracks.length === 0}
@@ -465,29 +428,18 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
                                                 : 'border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)] hover:shadow-[0_0_25px_rgba(6,182,212,0.3)] hover:border-cyan-400'
                                             }`}
                                         >
-                                            {/* Progress Fill */}
-                                            {holdingItemId === `detail-${selectedPlaylist.id}` && (
-                                                <div 
-                                                    className="absolute inset-0 bg-cyan-500 transition-all duration-75 ease-linear"
-                                                    style={{ width: `${holdProgress}%` }}
-                                                ></div>
-                                            )}
+                                            <div 
+                                                className={`absolute inset-0 bg-cyan-500 z-0 origin-left ${holdingItemId === `detail-${selectedPlaylist.id}` && isHolding ? 'transition-transform duration-[1000ms] ease-linear scale-x-100' : 'transition-none scale-x-0'}`}
+                                            ></div>
                                             
-                                            {/* Content Layer */}
-                                            <div className="relative z-10 w-full h-full flex items-center justify-center gap-3 bg-transparent">
-                                                {holdProgress >= 100 && holdingItemId === `detail-${selectedPlaylist.id}` ? (
-                                                     <span className="text-white font-black tracking-[0.2em] text-lg animate-pulse">PROGRAM LOADED</span>
-                                                ) : (
-                                                    <>
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-colors ${holdProgress > 0 && holdingItemId === `detail-${selectedPlaylist.id}` ? 'text-white' : 'text-cyan-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                        </svg>
-                                                        <span className={`font-black tracking-[0.2em] text-sm md:text-base transition-colors ${holdProgress > 0 && holdingItemId === `detail-${selectedPlaylist.id}` ? 'text-white' : 'text-cyan-500'}`}>
-                                                            HOLD TO LOAD PROGRAM
-                                                        </span>
-                                                    </>
-                                                )}
+                                            <div className="relative z-10 w-full h-full flex items-center justify-center gap-3 bg-transparent pointer-events-none">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className={`h-6 w-6 transition-colors ${holdingItemId === `detail-${selectedPlaylist.id}` && isHolding ? 'text-white delay-500' : 'text-cyan-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                                </svg>
+                                                <span className={`font-black tracking-[0.2em] text-sm md:text-base transition-colors ${holdingItemId === `detail-${selectedPlaylist.id}` && isHolding ? 'text-white delay-500' : 'text-cyan-500'}`}>
+                                                    HOLD TO LOAD PROGRAM
+                                                </span>
                                             </div>
                                         </button>
                                     </div>
@@ -500,8 +452,8 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
 
              {/* SONGS TAB */}
              {activeTab === 'SONGS' && (
-                <div className="h-full relative">
-                    <div className="h-full overflow-y-auto custom-scrollbar p-6 pb-24">
+                <div className="h-full relative w-full">
+                    <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 pb-24">
                         <div className="flex justify-between items-end mb-4 border-b border-zinc-800 pb-2">
                             <h3 className="text-cyan-400 font-bold brand-font">ALL TRACKS</h3>
                             <span className="text-xs text-zinc-500 font-mono">{tracks.length} FILES</span>
@@ -518,7 +470,7 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
                                     }`}
                                 >
                                     <div 
-                                        onClick={() => { onTrackSelect(track); onClose(); }}
+                                        onClick={() => { onTrackSelect(track, tracks); onClose(); }}
                                         className={`w-8 h-8 rounded flex items-center justify-center shrink-0 cursor-pointer ${
                                             active 
                                             ? 'bg-cyan-500 text-black shadow-[0_0_10px_rgba(6,182,212,0.5)]' 
@@ -538,7 +490,7 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
 
                                     <div 
                                         className="flex-1 min-w-0 cursor-pointer"
-                                        onClick={() => { onTrackSelect(track); onClose(); }}
+                                        onClick={() => { onTrackSelect(track, tracks); onClose(); }}
                                     >
                                         <div className={`font-bold text-sm truncate ${active ? 'text-cyan-400' : 'text-white'}`}>
                                             <MarqueeTitle text={track.name} small />
@@ -577,30 +529,19 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
                             );
                         })}
                     </div>
-                    
-                    {/* FAB: Floating Upload Button */}
-                    <button 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="absolute bottom-6 right-6 w-14 h-14 bg-cyan-500 text-black rounded-full shadow-[0_0_30px_rgba(6,182,212,0.5)] flex items-center justify-center hover:scale-110 hover:bg-white transition-all duration-300 group z-30"
-                        title="Import Music"
-                    >
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 group-hover:rotate-90 transition-transform" viewBox="0 0 20 20" fill="currentColor">
-                             <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
-                         </svg>
-                    </button>
                 </div>
              )}
 
-             {/* ARTISTS / ALBUMS (Simple List View) */}
+             {/* ARTISTS / ALBUMS */}
              {(activeTab === 'ARTISTS' || activeTab === 'ALBUMS') && (
                 <div className="p-6 overflow-y-auto custom-scrollbar h-full">
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         {Object.entries(activeTab === 'ARTISTS' ? groupedData.artists : groupedData.albums).map(([key, items]) => {
                             const typedItems = items as SongMetadata[];
                             return (
-                                <div 
+                                <button 
                                     key={key}
-                                    className="relative group overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg cursor-pointer transition-all hover:border-cyan-500/50"
+                                    className="relative group overflow-hidden bg-zinc-900 border border-zinc-800 rounded-lg cursor-pointer transition-all hover:border-cyan-500/50 text-left"
                                     onMouseDown={() => handleHoldStart(key, typedItems)}
                                     onMouseUp={handleHoldEnd}
                                     onMouseLeave={handleHoldEnd}
@@ -608,35 +549,50 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
                                     onTouchEnd={handleHoldEnd}
                                     onContextMenu={(e) => e.preventDefault()}
                                     onClick={() => {
-                                        if (!ignoreClickRef.current) {
-                                            onTrackSelect(typedItems[0]);
-                                            setTimeout(onClose, 200);
-                                        }
+                                        onTrackSelect(typedItems[0], typedItems);
+                                        setTimeout(onClose, 200);
                                     }}
                                 >
-                                    {/* Hold Progress */}
-                                    {holdingItemId === key && (
-                                        <div 
-                                            className="absolute inset-0 bg-cyan-900/30 transition-all duration-75 ease-linear z-0"
-                                            style={{ width: `${holdProgress}%` }}
-                                        ></div>
-                                    )}
+                                    <div 
+                                        className={`absolute inset-0 bg-cyan-900/30 z-0 origin-left ${holdingItemId === key && isHolding ? 'transition-transform duration-[1000ms] ease-linear scale-x-100' : 'transition-none scale-x-0'}`}
+                                    ></div>
 
-                                    <div className="p-4 relative z-10">
+                                    <div className="p-4 relative z-10 pointer-events-none">
                                         <div className="text-lg font-bold text-white mb-1 group-hover:text-cyan-400">
                                             <MarqueeTitle text={key} />
                                         </div>
                                         <div className="text-xs text-zinc-500 font-mono">{(typedItems as SongMetadata[]).length} TRACKS</div>
                                     </div>
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
                 </div>
              )}
+             
+             {/* FAB: Floating Upload Button - Hoisted to Main Level for Visibility */}
+             {activeTab === 'SONGS' && (
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`absolute bottom-8 right-6 w-14 h-14 rounded-full shadow-[0_0_30px_rgba(6,182,212,0.5)] flex items-center justify-center transition-all duration-300 group z-[100] ${isProcessingFiles ? 'bg-zinc-800 cursor-wait' : 'bg-cyan-500 hover:scale-110 hover:bg-white text-black'}`}
+                    title="Import Music"
+                    disabled={isProcessingFiles}
+                >
+                        {isProcessingFiles ? (
+                            <svg className="animate-spin h-6 w-6 text-cyan-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 group-hover:rotate-90 transition-transform" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                            </svg>
+                        )}
+                </button>
+             )}
           </div>
 
-          {/* ADD TO PLAYLIST MODAL (Nested Overlay) */}
+          {/* ADD TO PLAYLIST MODAL */}
           {trackToAdd && (
               <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in-up">
                   <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-sm shadow-2xl overflow-hidden">
@@ -674,7 +630,7 @@ export const MusicLibrary: React.FC<MusicLibraryProps> = ({
               </div>
           )}
 
-        {/* Footer Subtext & Disclaimer */}
+        {/* Footer Subtext */}
         <div className="p-3 bg-zinc-950 border-t border-zinc-800 shrink-0 text-center relative z-10 flex flex-col gap-2">
              <div className="text-[10px] text-cyan-500/50 font-mono tracking-[0.3em] uppercase animate-pulse">
                 [ TAP: INSPECT // HOLD: DIRECT LOAD ]

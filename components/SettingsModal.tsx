@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Settings, UnitSystem, InputSource } from '../types';
+import { Settings, UnitSystem, InputSource, AudioStabilityMode } from '../types';
 import { BPM_MIN, BPM_MAX, DEMO_TRACKS } from '../constants';
 
 interface SettingsModalProps {
@@ -43,6 +43,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   
   const handleInputSourceToggle = (source: InputSource) => {
       setLocalSettings(prev => ({ ...prev, inputSource: source }));
+  };
+  
+  const handleStabilityModeToggle = (mode: AudioStabilityMode) => {
+      setLocalSettings(prev => ({ ...prev, audioStabilityMode: mode }));
   };
 
   const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,6 +177,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                      )}
                  </div>
              )}
+          </section>
+
+          {/* --- PERFORMANCE / AUDIO STABILITY --- */}
+          <section>
+             <label className="text-[10px] text-cyan-500 uppercase tracking-[0.2em] font-bold mb-3 block flex items-center gap-2">
+                <span className="w-8 h-[1px] bg-cyan-900"></span>
+                Performance & Audio
+             </label>
+             <div className="bg-zinc-900/50 p-3 rounded-lg border border-zinc-800">
+                <span className="text-xs text-gray-300 font-bold uppercase block mb-2">Audio Stability Mode</span>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => handleStabilityModeToggle(AudioStabilityMode.AUTO)}
+                        className={`flex-1 py-2 text-[9px] font-bold uppercase rounded border transition-all ${localSettings.audioStabilityMode === AudioStabilityMode.AUTO ? 'bg-cyan-900/30 text-cyan-400 border-cyan-500/50' : 'bg-zinc-800 text-gray-500 border-transparent hover:text-white'}`}
+                    >
+                        Auto
+                    </button>
+                    <button
+                        onClick={() => handleStabilityModeToggle(AudioStabilityMode.DYNAMIC)}
+                        className={`flex-1 py-2 text-[9px] font-bold uppercase rounded border transition-all ${localSettings.audioStabilityMode === AudioStabilityMode.DYNAMIC ? 'bg-fuchsia-900/30 text-fuchsia-400 border-fuchsia-500/50' : 'bg-zinc-800 text-gray-500 border-transparent hover:text-white'}`}
+                    >
+                        High Perf
+                    </button>
+                    <button
+                        onClick={() => handleStabilityModeToggle(AudioStabilityMode.STABLE)}
+                        className={`flex-1 py-2 text-[9px] font-bold uppercase rounded border transition-all ${localSettings.audioStabilityMode === AudioStabilityMode.STABLE ? 'bg-amber-900/30 text-amber-400 border-amber-500/50' : 'bg-zinc-800 text-gray-500 border-transparent hover:text-white'}`}
+                    >
+                        Saver
+                    </button>
+                </div>
+                <div className="mt-2 text-[9px] text-gray-500 font-mono leading-tight">
+                    {localSettings.audioStabilityMode === AudioStabilityMode.AUTO && "Automatically enables Battery Saver when battery < 20%."}
+                    {localSettings.audioStabilityMode === AudioStabilityMode.DYNAMIC && "Enables dynamic speed ramping. May stutter on low power devices."}
+                    {localSettings.audioStabilityMode === AudioStabilityMode.STABLE && "Forces stable 1.0x playback speed. Saves battery and prevents stuttering."}
+                </div>
+             </div>
           </section>
 
           {/* --- TARGET ZONES (Conditional) --- */}

@@ -34,6 +34,8 @@ interface HeartVisualizerProps {
   // NEW: Workout Mode to prevent UI flashes
   workoutMode?: WorkoutMode;
   showVisor?: boolean;
+  // NEW: Eco Mode Indicator
+  isEcoMode?: boolean;
 }
 
 type TransitionStage = 'IDLE' | 'AVATAR_SPOTLIGHT' | 'BPM_SPOTLIGHT';
@@ -62,7 +64,8 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({
   onResume,
   onStop,
   workoutMode,
-  showVisor
+  showVisor,
+  isEcoMode
 }) => {
   const config = MODE_CONFIG[mode];
   const beatDuration = useMemo(() => 60 / bpm, [bpm]);
@@ -201,6 +204,13 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({
         className={`fixed inset-0 bg-black/85 transition-opacity duration-700 pointer-events-none z-40`}
         style={{ opacity: isOverlayActive ? 1 : 0 }}
       ></div>
+
+      {/* ECO MODE INDICATOR (Z-50) */}
+      {isEcoMode && !isOverlayActive && (
+          <div className="absolute top-20 right-6 z-50 flex items-center gap-2 pointer-events-none opacity-50">
+              <span className="text-[10px] text-amber-500 font-bold uppercase tracking-widest">⚠ ECO MODE ACTIVE</span>
+          </div>
+      )}
 
       {/* --- AVATAR CONTAINER (Top 55%) --- */}
       <div 

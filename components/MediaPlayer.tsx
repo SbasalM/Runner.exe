@@ -14,6 +14,7 @@ interface MediaPlayerProps {
   onToggleShuffle: () => void;
   repeatMode: 'off' | 'all' | 'one';
   onToggleRepeat: () => void;
+  isLoading?: boolean;
 }
 
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
@@ -26,7 +27,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   shuffle,
   onToggleShuffle,
   repeatMode,
-  onToggleRepeat
+  onToggleRepeat,
+  isLoading = false
 }) => {
   
   return (
@@ -101,14 +103,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
           </button>
           
-          {/* PLAY/PAUSE */}
+          {/* PLAY/PAUSE/LOADING */}
           <button
             onClick={onPlayPause}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-              isPlaying ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.6)] hover:scale-105' : 'bg-zinc-800 text-white border border-zinc-700 hover:border-cyan-500/50'
+            disabled={isLoading}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all relative overflow-hidden ${
+              isPlaying 
+              ? 'bg-cyan-500 text-black shadow-[0_0_15px_rgba(6,182,212,0.6)] hover:scale-105' 
+              : 'bg-zinc-800 text-white border border-zinc-700 hover:border-cyan-500/50'
             }`}
           >
-            {isPlaying ? (
+            {isLoading ? (
+                <svg className="animate-spin h-5 w-5 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            ) : isPlaying ? (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
             ) : (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 translate-x-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
