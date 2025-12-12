@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { UnitSystem } from '../types';
+import { BPM_MIN, BPM_MAX } from '../constants';
 
 export const useRunEngine = (bpm: number, isPlaying: boolean, units: UnitSystem, isActive: boolean, useGPS: boolean = false) => {
   const [distanceKm, setDistanceKm] = useState(0); 
@@ -110,10 +111,16 @@ export const useRunEngine = (bpm: number, isPlaying: boolean, units: UnitSystem,
         // Calculate simulated speed based on BPM
         // Base speed at 60 BPM = 5 km/h (Walking)
         // Max speed at 180 BPM = 18 km/h (Sprinting)
-        const speedKmh = 5 + ((bpm - 60) / (180 - 60)) * (18 - 5);
+        
+        // Safety: Clamp BPM to realistic minimum for physics math to prevent negative speed
+        // Even if sensor says 10 BPM, we simulate "crawling" speed, not reverse time travel.
+        const physicsBpm = Math.max(bpm, 40); 
+        
+        const speedKmh = 5 + ((physicsBpm - 60) / (180 - 60)) * (18 - 5);
+        const safeSpeedKmh = Math.max(0, speedKmh); // Double safety clamp
         
         // Pace = 60 / speedKmh (min/km)
-        const paceMinPerKm = speedKmh > 0 ? 60 / speedKmh : 0;
+        const paceMinPerKm = safeSpeedKmh > 0 ? 60 / safeSpeedKmh : 0;
         setCurrentPaceMinPerKm(paceMinPerKm);
 
         const interval = setInterval(() => {
@@ -122,11 +129,11 @@ export const useRunEngine = (bpm: number, isPlaying: boolean, units: UnitSystem,
             lastUpdateRef.current = now;
 
             // Update Distance
-            const distanceIncrement = (speedKmh / 3600) * deltaSeconds;
+            const distanceIncrement = (safeSpeedKmh / 3600) * deltaSeconds;
             setDistanceKm(prev => prev + distanceIncrement);
 
             // Update Calories
-            const mets = speedKmh * 0.95;
+            const mets = safeSpeedKmh * 0.95;
             const caloriesIncrement = (mets * 70 * (deltaSeconds / 3600));
             setCalories(prev => prev + caloriesIncrement);
 

@@ -33,6 +33,7 @@ interface HeartVisualizerProps {
   onStop: () => void;
   // NEW: Workout Mode to prevent UI flashes
   workoutMode?: WorkoutMode;
+  showVisor?: boolean;
 }
 
 type TransitionStage = 'IDLE' | 'AVATAR_SPOTLIGHT' | 'BPM_SPOTLIGHT';
@@ -60,7 +61,8 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({
   cooldownStage,
   onResume,
   onStop,
-  workoutMode
+  workoutMode,
+  showVisor
 }) => {
   const config = MODE_CONFIG[mode];
   const beatDuration = useMemo(() => 60 / bpm, [bpm]);
@@ -261,6 +263,7 @@ export const HeartVisualizer: React.FC<HeartVisualizerProps> = ({
                     targetMin={targetMin}
                     targetMax={targetMax}
                     isCelebration={isCelebration}
+                    showVisor={showVisor}
                 />
              </div>
           </div>

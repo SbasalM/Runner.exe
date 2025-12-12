@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 
 interface SplashScreenProps {
@@ -44,8 +45,9 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onStart }) => {
         </span>
       </button>
 
-      <div className="absolute bottom-8 text-[10px] text-gray-800 font-mono">
-        v2.5.0 // SYSTEM_READY
+      <div className="absolute bottom-4 flex flex-col items-center gap-1 text-[10px] text-cyan-900/50 font-mono pointer-events-none">
+        <div>v0.1 [BETA]</div>
+        <div>SIMULATED BIOMETRICS // PROTOTYPE BUILD</div>
       </div>
     </div>
   );

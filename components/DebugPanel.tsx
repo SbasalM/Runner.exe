@@ -13,6 +13,8 @@ interface DebugPanelProps {
   unlockedItems: string[];
   toggleUnlock: (item: string) => void;
   triggerManualMilestone: () => void;
+  showVisor?: boolean;
+  setShowVisor?: (val: boolean) => void;
 }
 
 export const DebugPanel: React.FC<DebugPanelProps> = ({
@@ -23,7 +25,9 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
   modeConfig,
   unlockedItems = [],
   toggleUnlock,
-  triggerManualMilestone
+  triggerManualMilestone,
+  showVisor,
+  setShowVisor
 }) => {
   if (!isOpen) return null;
 
@@ -60,6 +64,18 @@ export const DebugPanel: React.FC<DebugPanelProps> = ({
                        <span className="text-sm text-gray-300 font-mono capitalize">{item === 'jaw' ? 'Jaw Ventilator' : item.replace('_', ' ')}</span>
                    </label>
                ))}
+               {/* Explicit Visor Toggle */}
+               {setShowVisor && (
+                 <label className="flex items-center gap-3 p-2 bg-gray-800 rounded border border-gray-700 cursor-pointer hover:bg-gray-750">
+                    <input 
+                      type="checkbox" 
+                      checked={showVisor || false}
+                      onChange={(e) => setShowVisor(e.target.checked)}
+                      className="rounded text-cyan-500 focus:ring-0 bg-gray-900 border-gray-600"
+                    />
+                    <span className="text-sm text-gray-300 font-mono capitalize">Tactical Visor</span>
+                </label>
+               )}
            </div>
         </div>
 

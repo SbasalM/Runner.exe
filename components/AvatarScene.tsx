@@ -18,6 +18,7 @@ interface AvatarSceneProps {
   targetMin: number;
   targetMax: number;
   isCelebration?: boolean;
+  showVisor?: boolean;
 }
 
 interface ErrorBoundaryProps {
@@ -89,7 +90,8 @@ const SceneContent: React.FC<{
     targetMin: number; 
     targetMax: number;
     isCelebration?: boolean;
-}> = ({ color, mode, bpm, isIgnited, equippedItems, isPlaying, isStandby, avatarUrl, targetMin, targetMax, isCelebration }) => {
+    showVisor?: boolean;
+}> = ({ color, mode, bpm, isIgnited, equippedItems, isPlaying, isStandby, avatarUrl, targetMin, targetMax, isCelebration, showVisor }) => {
   const groupRef = useRef<THREE.Group>(null);
   
   // Ref to track current spin velocity for smooth deceleration
@@ -190,6 +192,7 @@ const SceneContent: React.FC<{
               targetMin={targetMin}
               targetMax={targetMax}
               isCelebration={isCelebration}
+              showVisor={showVisor}
             />
          </ErrorBoundary>
       </group>

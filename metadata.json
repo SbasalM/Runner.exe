@@ -3,6 +3,7 @@
   "description": "An adaptive biofeedback music engine for cyberpunk fitness.",
   "requestFramePermissions": [
     "camera",
-    "geolocation"
+    "geolocation",
+    "bluetooth"
   ]
 }

@@ -16,6 +16,7 @@ interface GraphicSkullProps {
   targetMin: number;
   targetMax: number;
   isCelebration?: boolean;
+  showVisor?: boolean;
 }
 
 export const GraphicSkull: React.FC<GraphicSkullProps> = ({ 
@@ -27,7 +28,8 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
   equippedItems = [], 
   targetMin, 
   targetMax,
-  isCelebration = false
+  isCelebration = false,
+  showVisor = false
 }) => {
   const { scene } = useGLTF(avatarUrl);
   
@@ -38,6 +40,8 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
   const eyesRefs = useRef<THREE.Mesh[]>([]);
   const jawVRefs = useRef<THREE.Mesh[]>([]);    
   const halosRefs = useRef<THREE.Mesh[]>([]);   
+  const visorFrameRefs = useRef<THREE.Mesh[]>([]);
+  const visorLensRefs = useRef<THREE.Mesh[]>([]);
   
   const flashLevel = useRef(0.0);
   const prevPhaseRef = useRef<number>(0); 
@@ -94,6 +98,36 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
     opacity: 0.9,
   }), []);
 
+  // --- VISOR MATERIALS ---
+  // Phase 1: Cold Hardware (Sin City style)
+  const hardwareMaterial = useMemo(() => new THREE.MeshStandardMaterial({
+    color: new THREE.Color(0x888888),
+    roughness: 0.2,
+    metalness: 0.9,
+    toneMapped: false
+  }), []);
+
+  // Phase 2: Angry Red
+  const redLensMaterial = useMemo(() => new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xFF0000),
+    toneMapped: false,
+    side: THREE.DoubleSide
+  }), []);
+
+  // Phase 3: Overheat White
+  const whiteLensMaterial = useMemo(() => new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xFFFFFF),
+    toneMapped: false,
+    side: THREE.DoubleSide
+  }), []);
+
+  // Phase 4: Rainbow Celebration
+  const rainbowLensMaterial = useMemo(() => new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0xFFFFFF),
+    toneMapped: false,
+    side: THREE.DoubleSide
+  }), []);
+
   useEffect(() => {
     if (lightDir) {
         neonMaterial.uniforms.uLightDir.value.copy(lightDir);
@@ -105,6 +139,8 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
     eyesRefs.current = [];
     jawVRefs.current = [];
     halosRefs.current = [];
+    visorFrameRefs.current = [];
+    visorLensRefs.current = [];
 
     clone.traverse((child) => {
       if ((child as THREE.Mesh).isMesh) {
@@ -115,6 +151,15 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
         
         while (curr && curr !== scene) {
             const n = curr.name.toLowerCase();
+            // Order matters for matching
+            if (n.includes("visor_frame")) {
+                type = 'VISOR_FRAME';
+                break;
+            }
+            if (n.includes("visor_lens")) {
+                type = 'VISOR_LENS';
+                break;
+            }
             if (n.includes("jaw_v") || n.includes("ventilator")) {
                 type = 'JAW_V';
                 break;
@@ -140,6 +185,17 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
         }
 
         switch (type) {
+            case 'VISOR_FRAME':
+                mesh.material = neonMaterial;
+                mesh.visible = false;
+                visorFrameRefs.current.push(mesh);
+                break;
+            case 'VISOR_LENS':
+                // Initial material, will be overridden by loop
+                mesh.material = hardwareMaterial;
+                mesh.visible = false;
+                visorLensRefs.current.push(mesh);
+                break;
             case 'JAW_V':
                 mesh.material = neonMaterial;
                 mesh.visible = false; 
@@ -164,7 +220,7 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
         }
       }
     });
-  }, [clone, neonMaterial, eyeMaterial, noseMaterial, haloMaterial, scene]);
+  }, [clone, neonMaterial, eyeMaterial, noseMaterial, haloMaterial, hardwareMaterial, scene]);
 
   // Pre-define Colors
   const colorGray = useMemo(() => new THREE.Color('#888888'), []);
@@ -190,6 +246,10 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
     halosRefs.current.forEach(mesh => {
         mesh.visible = isHaloEquipped;
     });
+    visorFrameRefs.current.forEach(mesh => {
+        mesh.visible = showVisor;
+    });
+    // Visor Lens visibility handled below with material update
 
     // 2. FLASH DECAY
     flashLevel.current = THREE.MathUtils.damp(flashLevel.current, 0, 8, delta);
@@ -266,7 +326,33 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
         }
     });
 
-    // 5. HALO ANIMATION
+    // 5. VISOR LENS MATERIAL LOGIC (PHASE REACTIVE)
+    // Phase 1 (Low): Hardware (Sin City)
+    // Phase 2 (Zone): Red
+    // Phase 3 (Overdrive): White
+    // Phase 4 (Celebration): Rainbow
+    let activeLensMat = hardwareMaterial;
+
+    if (isCelebration) {
+         // Apply Rainbow Color to Material
+         rainbowLensMaterial.color.copy(targetColor);
+         activeLensMat = rainbowLensMaterial;
+    } else if (isStandby || currentPhase === 0) {
+         activeLensMat = hardwareMaterial;
+    } else if (currentPhase === 1) {
+         activeLensMat = redLensMaterial;
+    } else {
+         activeLensMat = whiteLensMaterial;
+    }
+
+    visorLensRefs.current.forEach(mesh => {
+        mesh.visible = showVisor;
+        if (mesh.material.uuid !== activeLensMat.uuid) {
+            mesh.material = activeLensMat;
+        }
+    });
+
+    // 6. HALO ANIMATION
     if (halosRefs.current.length > 0 && isHaloEquipped) {
         let rotSpeed = 0.5;
         if (isCelebration) rotSpeed = 3.0; // Fast Spin
@@ -289,7 +375,7 @@ export const GraphicSkull: React.FC<GraphicSkullProps> = ({
         haloMaterial.color.copy(targetColor).lerp(colorWhite, pulse * 0.5); 
     }
 
-    // 6. EYE LOGIC
+    // 7. EYE LOGIC
     if (!isStandby && !isCelebration) {
         if (prevPhaseRef.current < 1 && currentPhase >= 1) flashLevel.current = 1.0;
         else if (prevPhaseRef.current < 2 && currentPhase >= 2) flashLevel.current = 1.0;

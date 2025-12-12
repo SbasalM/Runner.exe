@@ -8,9 +8,24 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: Settings;
   onUpdate: (newSettings: Settings) => void;
+  isBleConnected: boolean;
+  onConnectBle: () => void;
+  onDisconnectBle: () => void;
+  bleDeviceName?: string | null;
+  bleError?: string | null;
 }
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings, onUpdate }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    settings, 
+    onUpdate,
+    isBleConnected,
+    onConnectBle,
+    onDisconnectBle,
+    bleDeviceName,
+    bleError
+}) => {
   const [localSettings, setLocalSettings] = useState<Settings>(settings);
 
   // Sync local state with prop when modal opens to ensure fresh data
@@ -94,7 +109,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                 Input Source
              </label>
              {/* Rocker Switch Style */}
-             <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 relative">
+             <div className="flex bg-zinc-900 rounded-lg p-1 border border-zinc-800 relative mb-4">
                 <div className={`absolute top-1 bottom-1 w-[48%] bg-zinc-800 rounded transition-all duration-300 ${localSettings.inputSource === InputSource.HEART_RATE ? 'left-1 border border-cyan-500/30' : 'left-[51%] border border-fuchsia-500/30'}`}></div>
                 <button
                     onClick={() => handleInputSourceToggle(InputSource.HEART_RATE)}
@@ -113,6 +128,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                     <span className="tracking-widest">TIMER MODE</span>
                 </button>
              </div>
+
+             {/* BLE CONNECT BUTTON */}
+             {localSettings.inputSource === InputSource.HEART_RATE && (
+                 <div className="bg-zinc-900/50 p-4 rounded-lg border border-zinc-800">
+                     <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Bluetooth Monitor</span>
+                        <span className={`text-[10px] font-bold uppercase ${isBleConnected ? 'text-green-400' : 'text-gray-600'}`}>
+                            {isBleConnected ? 'LINK ESTABLISHED' : 'DISCONNECTED'}
+                        </span>
+                     </div>
+                     
+                     {isBleConnected ? (
+                         <div className="flex items-center gap-2">
+                             <div className="flex-1 bg-green-900/20 border border-green-500/30 rounded px-3 py-2 text-xs text-green-400 font-mono truncate">
+                                 {bleDeviceName || 'Unknown Device'}
+                             </div>
+                             <button 
+                                onClick={onDisconnectBle}
+                                className="px-4 py-2 bg-zinc-800 hover:bg-red-900/50 text-xs text-red-400 font-bold uppercase rounded border border-transparent hover:border-red-500/50 transition-colors"
+                             >
+                                Unlink
+                             </button>
+                         </div>
+                     ) : (
+                        <button 
+                            onClick={onConnectBle}
+                            className="w-full py-3 bg-cyan-900/20 border border-cyan-500/50 text-cyan-400 hover:bg-cyan-500 hover:text-black font-bold uppercase tracking-wider text-xs rounded transition-all shadow-[0_0_15px_rgba(6,182,212,0.1)] hover:shadow-[0_0_20px_rgba(6,182,212,0.4)]"
+                        >
+                            Connect Bluetooth Device
+                        </button>
+                     )}
+                     
+                     {bleError && (
+                         <div className="mt-2 text-[10px] text-red-500 font-mono">
+                             ERROR: {bleError}
+                         </div>
+                     )}
+                     
+                     {!isBleConnected && (
+                         <div className="mt-2 text-[9px] text-gray-600 font-mono leading-tight">
+                             Compatible with Polar H10, Garmin, and standard BLE Heart Rate straps. Browser must support Web Bluetooth.
+                         </div>
+                     )}
+                 </div>
+             )}
           </section>
 
           {/* --- TARGET ZONES (Conditional) --- */}
@@ -303,6 +363,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, s
                 </button>
              </div>
           </section>
+
+          {/* DISCLAIMER FOOTER */}
+          <div className="text-center mt-8 mb-4">
+            <div className="text-xs text-gray-600 font-mono font-bold mb-1">CyberPump Bio-Engine v0.1</div>
+            <div className="text-[10px] text-gray-700 font-mono leading-tight max-w-[80%] mx-auto">
+              Heart rate data is being tested with compatible devices. Fallback simulation active for demonstration purposes. Not a medical device.
+            </div>
+          </div>
 
         </div>
 

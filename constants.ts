@@ -1,5 +1,4 @@
 
-
 import { AppMode, InputSource } from "./types";
 
 export const BPM_MIN = 60;
@@ -9,7 +8,7 @@ export const BPM_TARGET_HIGH = 150;
 
 // Reliable public CDN URL for the custom Skull model
 // Switched to raw.githubusercontent.com for direct access to fix fetch errors
-export const SKULL_MODEL_URL = "https://raw.githubusercontent.com/SbasalM/heart-sync-assets/main/GEMINI%20HACKATHON_v5.glb";
+export const SKULL_MODEL_URL = "https://raw.githubusercontent.com/SbasalM/heart-sync-assets/main/GEMINI%20HACKATHON_v6.glb";
 export const DEMO_TRACK_URL = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"; 
 
 export const DEMO_TRACKS = {

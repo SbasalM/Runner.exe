@@ -6,6 +6,7 @@ import { useAudioEngine } from './hooks/useAudioEngine';
 import { useRunEngine } from './hooks/useRunEngine';
 import { useGymEngine } from './hooks/useGymEngine';
 import { useProgression } from './hooks/useProgression';
+import { useBluetoothHeartRate } from './hooks/useBluetoothHeartRate';
 import { HeartVisualizer } from './components/HeartVisualizer';
 import { RunMetrics } from './components/RunMetrics';
 import { GymMetrics } from './components/GymMetrics';
@@ -24,6 +25,9 @@ const App: React.FC = () => {
   const [hasStarted, setHasStarted] = useState(false);
   const [bpm, setBpm] = useState<number>(60);
   
+  // Bluetooth Hook Integration
+  const { isConnected: isBleConnected, bpm: bleBpm, deviceName: bleDeviceName, connect: connectBle, disconnect: disconnectBle, error: bleError } = useBluetoothHeartRate();
+
   const [currentTrack, setCurrentTrack] = useState<SongMetadata | null>(() => {
     try {
         const savedTrack = localStorage.getItem('cp_last_track');
@@ -44,6 +48,7 @@ const App: React.FC = () => {
   // Custom Avatar State
   const [avatarUrl, setAvatarUrl] = useState<string>(SKULL_MODEL_URL);
   const [equippedItems, setEquippedItems] = useState<string[]>([]);
+  const [showVisor, setShowVisor] = useState(false);
   
   // Settings & Modes
   const [workoutMode, setWorkoutMode] = useState<WorkoutMode>(WorkoutMode.RUN);
@@ -60,7 +65,7 @@ const App: React.FC = () => {
     overdriveSpeedup: true,
     useGPS: false,
     gestureControlEnabled: false,
-    showJudgeControls: false
+    showJudgeControls: true
   });
 
   const [isCooldown, setIsCooldown] = useState(false);
@@ -154,6 +159,27 @@ const App: React.FC = () => {
   };
   
   // --- MODE CALCULATOR ---
+  
+  // Determine Effective BPM
+  const effectiveBpm = useMemo(() => {
+    if (settings.inputSource === InputSource.TIMER) {
+        if (isCooldown) return 70;
+        // Simple mock logic for timer mode stages
+        const durationSecs = settings.sessionDuration * 60;
+        if (settings.slugStart && timerElapsed < 10) return 90;
+        if (timerElapsed < durationSecs) return 140;
+        return 170; // Overdrive after timer
+    } else {
+        // HEART RATE MODE
+        // Priority: Bluetooth BPM -> Simulated Slider BPM
+        if (isBleConnected && bleBpm > 0) {
+            return bleBpm;
+        }
+        return bpm;
+    }
+  }, [bpm, settings.inputSource, isCooldown, timerElapsed, isBleConnected, bleBpm, settings.slugStart, settings.sessionDuration]);
+
+
   const currentMode = useMemo((): AppMode => {
     // 1. GYM MODE LOGIC OVERRIDE
     if (workoutMode === WorkoutMode.GYM) {
@@ -171,22 +197,12 @@ const App: React.FC = () => {
         if (timerElapsed < durationSecs) return AppMode.ZONE;
         return AppMode.OVERDRIVE;
     } else {
-        if (bpm < settings.targetMin) return AppMode.MOTIVATION;
-        if (bpm > settings.targetMax) return AppMode.OVERDRIVE;
+        if (effectiveBpm < settings.targetMin) return AppMode.MOTIVATION;
+        if (effectiveBpm > settings.targetMax) return AppMode.OVERDRIVE;
         return AppMode.ZONE;
     }
-  }, [bpm, settings, isCooldown, timerElapsed, workoutMode]);
+  }, [effectiveBpm, settings, isCooldown, timerElapsed, workoutMode]);
 
-  const effectiveBpm = useMemo(() => {
-    if (settings.inputSource === InputSource.TIMER) {
-        if (currentMode === AppMode.MOTIVATION) return 90;
-        if (currentMode === AppMode.ZONE) return 140;
-        if (currentMode === AppMode.OVERDRIVE) return 170;
-        if (currentMode === AppMode.COOLDOWN) return 70;
-        return 60;
-    }
-    return bpm;
-  }, [bpm, settings.inputSource, currentMode]);
 
   // Track Mode Changes for Data Spotlight
   const prevModeRef = useRef<AppMode>(currentMode);
@@ -337,7 +353,7 @@ const App: React.FC = () => {
 
   if (showBpmOverlay && settings.inputSource === InputSource.HEART_RATE) {
       centerDisplayValue = effectiveBpm;
-      centerDisplayLabel = "BPM";
+      centerDisplayLabel = isBleConnected ? "BLE BPM" : "SIM BPM";
   } else {
     if (settings.inputSource === InputSource.TIMER) {
         centerDisplayValue = formatTime(timerElapsed);
@@ -404,7 +420,14 @@ const App: React.FC = () => {
 
   const handleToggleEquip = (itemId: string) => {
     setEquippedItems(prev => {
-        if (prev.includes(itemId)) {
+        const isEquipping = !prev.includes(itemId);
+        
+        // Side effect for Visor
+        if (itemId === 'visor') {
+            setShowVisor(isEquipping);
+        }
+
+        if (!isEquipping) {
             return prev.filter(i => i !== itemId);
         } else {
             return [...prev, itemId];
@@ -417,10 +440,16 @@ const App: React.FC = () => {
     toggleUnlock(item);
     
     if (isUnlocked) {
-      setEquippedItems(prev => prev.filter(i => i !== item));
+      setEquippedItems(prev => {
+         if (item === 'visor') setShowVisor(false);
+         return prev.filter(i => i !== item);
+      });
     } else {
       setEquippedItems(prev => {
-          if (!prev.includes(item)) return [...prev, item];
+          if (!prev.includes(item)) {
+              if (item === 'visor') setShowVisor(true);
+              return [...prev, item];
+          }
           return prev;
       });
       triggerToast(`${item.replace('_', ' ')} UNLOCKED & EQUIPPED`);
@@ -698,6 +727,8 @@ const App: React.FC = () => {
         unlockedItems={unlockedItems}
         toggleUnlock={handleJudgeToggleUnlock}
         triggerManualMilestone={handleManualMilestone}
+        showVisor={showVisor}
+        setShowVisor={setShowVisor}
       />
 
       {/* JUDGE CONTROLS BUTTON - Now respects the toggle setting */}
@@ -748,6 +779,7 @@ const App: React.FC = () => {
                 onStop={handleStopWorkout}
                 // NEW: Pass explicit workout mode to avoid glitches
                 workoutMode={workoutMode}
+                showVisor={showVisor}
             />
             
             {workoutMode === WorkoutMode.RUN && (
@@ -878,6 +910,11 @@ const App: React.FC = () => {
           onClose={() => setShowSettingsModal(false)}
           settings={settings}
           onUpdate={setSettings}
+          isBleConnected={isBleConnected}
+          onConnectBle={connectBle}
+          onDisconnectBle={disconnectBle}
+          bleDeviceName={bleDeviceName}
+          bleError={bleError}
         />
 
         <ProfileModal
@@ -890,6 +927,7 @@ const App: React.FC = () => {
             history={workoutHistory}
             onUpdateSession={handleUpdateSession}
             onDeleteSession={handleDeleteSession}
+            showVisor={showVisor}
         />
 
         <WorkoutSummary 

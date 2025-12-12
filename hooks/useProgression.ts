@@ -56,6 +56,13 @@ export const useProgression = (currentSessionDistanceKm: number) => {
         unlocked = true;
     }
 
+    // Level 3: Tactical Visor at 30.0 Miles
+    if (totalMiles >= 30.0 && !newItems.has('visor')) {
+        newItems.add('visor');
+        unlockedName = 'TACTICAL VISOR';
+        unlocked = true;
+    }
+
     if (unlocked) {
         setUnlockedItems(Array.from(newItems));
         setNewUnlock(unlockedName);

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { WorkoutSession, WorkoutMode } from '../types';
 
@@ -11,6 +12,7 @@ interface ProfileModalProps {
   history?: WorkoutSession[];
   onUpdateSession?: (session: WorkoutSession) => void;
   onDeleteSession?: (sessionId: string) => void;
+  showVisor?: boolean;
 }
 
 interface HistoryItemProps {
@@ -149,7 +151,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onToggleEquip,
   history = [],
   onUpdateSession,
-  onDeleteSession
+  onDeleteSession,
+  showVisor
 }) => {
   if (!isOpen) return null;
 
@@ -159,7 +162,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const items = [
     { id: 'jaw', name: 'Cyber Jaw', req: '10.0 Miles' },
     { id: 'neural_halo', name: 'Neural Halo', req: '20.0 Miles' },
-    { id: 'cyber_visor', name: 'Cyber Visor', req: '30.0 Miles' }
+    { id: 'visor', name: 'Tactical Visor', req: '30.0 Miles' }
   ];
 
   // Calculate Rank based on distance (Basic logic)
@@ -248,8 +251,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                     
                     <div className="space-y-3">
                         {items.map(item => {
-                            const isUnlocked = unlockedItems.includes(item.id);
-                            const isEquipped = equippedItems.includes(item.id);
+                            // If Judge Controls force 'visor' (showVisor=true), treat it as Unlocked and Equipped
+                            const isVisorOverride = item.id === 'visor' && showVisor;
+                            const isUnlocked = unlockedItems.includes(item.id) || isVisorOverride;
+                            const isEquipped = equippedItems.includes(item.id) || isVisorOverride;
                             
                             return (
                                 <div 
